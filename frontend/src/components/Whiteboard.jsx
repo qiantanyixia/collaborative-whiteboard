@@ -4,6 +4,8 @@ import { Stage, Layer, Line } from 'react-konva';
 import { Box, Button, ButtonGroup } from '@mui/material';
 import { SocketContext } from '../utils/SocketContext';
 import { useSelector } from 'react-redux';
+import throttle from 'lodash.throttle';
+import { v4 as uuidv4 } from 'uuid'; // 引入 uuid
 
 const Whiteboard = ({ roomId }) => {
   const [lines, setLines] = useState([]);
@@ -18,6 +20,9 @@ const Whiteboard = ({ roomId }) => {
   useEffect(() => {
     if (!socket || !roomId) return;
 
+    // 请求加载白板
+    socket.emit('loadCanvas', { roomId });
+
     // 监听清空白板事件
     socket.on('clearCanvas', () => {
       setLines([]);
@@ -25,7 +30,7 @@ const Whiteboard = ({ roomId }) => {
 
     // 监听加载白板事件
     socket.on('loadCanvas', (savedLines) => {
-      setLines(savedLines);
+      setLines(savedLines || []); // 确保 savedLines 为数组
     });
 
     // 监听绘图事件
@@ -45,8 +50,9 @@ const Whiteboard = ({ roomId }) => {
     isDrawing.current = true;
     const stage = e.target.getStage();
     const pos = getRelativePointerPosition(stage);
-    // 创建新线条
+    // 创建新线条，分配唯一 ID
     const newLine = {
+      id: uuidv4(), // 生成唯一 ID
       tool,
       color: tool === 'eraser' ? '#ffffff' : color,
       width: tool === 'eraser' ? 10 : toolWidth,
@@ -59,11 +65,17 @@ const Whiteboard = ({ roomId }) => {
     socket.emit('drawLine', newLine);
   };
 
+  // 使用节流函数控制发送频率
+  const throttledEmitDraw = throttle((lastLine) => {
+    socket.emit('drawLine', lastLine);
+  }, 50); // 50ms 节流间隔，根据需要调整
+
   const handleMouseMove = (e) => {
     if (!isDrawing.current) return;
     const stage = e.target.getStage();
     const pos = getRelativePointerPosition(stage);
     let lastLine = lines[lines.length - 1];
+    if (!lastLine) return;
 
     // 添加新的点
     lastLine.points = lastLine.points.concat([pos.x, pos.y]);
@@ -71,8 +83,8 @@ const Whiteboard = ({ roomId }) => {
     updatedLines[updatedLines.length - 1] = lastLine;
     setLines(updatedLines);
 
-    // 向服务器发送更新后的线条信息
-    socket.emit('drawLine', lastLine);
+    // 向服务器发送更新后的线条信息，使用节流
+    throttledEmitDraw(lastLine);
   };
 
   const handleMouseUp = () => {
@@ -99,7 +111,7 @@ const Whiteboard = ({ roomId }) => {
   const loadCanvas = () => {
     // 向服务器请求加载白板
     socket.emit('loadCanvas', { roomId });
-    // 服务器会发送'loadCanvas'事件，包含保存的线条数据
+    // 服务器会发送 'loadCanvas' 事件，包含保存的线条数据
   };
 
   return (
@@ -166,10 +178,10 @@ const Whiteboard = ({ roomId }) => {
         onTouchEnd={handleMouseUp}
       >
         <Layer>
-          {lines.map((line, i) => (
-            line.points.length >= 2 && ( // 确保线条至少有两个点
+          {(lines || []).map((line) => (
+            line.points.length >= 2 && (
               <Line
-                key={i}
+                key={line.id} // 使用唯一 ID 作为键
                 points={line.points}
                 stroke={line.color}
                 strokeWidth={line.width}
