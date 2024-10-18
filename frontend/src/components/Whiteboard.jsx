@@ -1,13 +1,16 @@
 // src/components/Whiteboard.jsx
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { Stage, Layer, Line } from 'react-konva';
-import { Box, Button, ButtonGroup, Slider, Typography } from '@mui/material';
-import { SketchPicker } from 'react-color'; // 引入颜色选择器
+import { Box, Button, ButtonGroup, Slider, Typography, IconButton } from '@mui/material';
+import { SketchPicker } from 'react-color';
 import { SocketContext } from '../utils/SocketContext';
 import { useSelector, useDispatch } from 'react-redux';
 import throttle from 'lodash.throttle';
 import { v4 as uuidv4 } from 'uuid';
 import { setTool, setColor, setLineWidth } from '../redux/whiteboardSlice'; // 引入 Redux action
+import ZoomInIcon from '@mui/icons-material/ZoomIn';
+import ZoomOutIcon from '@mui/icons-material/ZoomOut';
+import FitScreenIcon from '@mui/icons-material/FitScreen';
 
 const Whiteboard = ({ roomId }) => {
   const [lines, setLines] = useState([]);
@@ -20,6 +23,10 @@ const Whiteboard = ({ roomId }) => {
   const socket = useContext(SocketContext); // 获取 Socket 实例
 
   const currentUser = useSelector((state) => state.user.user); // 获取当前用户
+
+  // 缩放和拖拽相关状态
+  const [stageScale, setStageScale] = useState(1);
+  const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     if (!socket || !roomId) return;
@@ -51,6 +58,9 @@ const Whiteboard = ({ roomId }) => {
   }, [socket, roomId]);
 
   const handleMouseDown = (e) => {
+    // 如果用户正在拖拽，请勿触发绘图
+    if (e.target === e.target.getStage()) return;
+
     isDrawing.current = true;
     const stage = e.target.getStage();
     const pos = getRelativePointerPosition(stage);
@@ -130,22 +140,84 @@ const Whiteboard = ({ roomId }) => {
     dispatch(setTool(selectedTool));
   };
 
+  // 处理缩放
+  const handleWheel = (e) => {
+    e.evt.preventDefault();
+
+    const scaleBy = 1.05;
+    const stage = e.target.getStage();
+    const oldScale = stage.scaleX();
+
+    const pointer = stage.getPointerPosition();
+
+    const mousePointTo = {
+      x: (pointer.x - stage.x()) / oldScale,
+      y: (pointer.y - stage.y()) / oldScale,
+    };
+
+    // 判断滚轮方向
+    const direction = e.evt.deltaY > 0 ? 1 : -1;
+
+    const newScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
+
+    setStageScale(newScale);
+
+    const newPos = {
+      x: pointer.x - mousePointTo.x * newScale,
+      y: pointer.y - mousePointTo.y * newScale,
+    };
+
+    setStagePosition(newPos);
+  };
+
+  // 处理拖拽结束
+  const handleDragEnd = (e) => {
+    setStagePosition({
+      x: e.target.x(),
+      y: e.target.y(),
+    });
+  };
+
+  // Zoom 控制按钮
+  const zoomIn = () => {
+    const scaleBy = 1.2;
+    const newScale = stageScale * scaleBy;
+    setStageScale(newScale);
+  };
+
+  const zoomOut = () => {
+    const scaleBy = 1.2;
+    const newScale = stageScale / scaleBy;
+    setStageScale(newScale);
+  };
+
+  const resetZoom = () => {
+    setStageScale(1);
+    setStagePosition({ x: 0, y: 0 });
+  };
+
   return (
     <Box mt={2}>
-      <Box mb={1} display="flex" alignItems="center">
+      <Box mb={1} display="flex" alignItems="center" flexWrap="wrap">
         {/* 绘图工具选择 */}
-        <ButtonGroup variant="contained" color="primary">
+        <ButtonGroup variant="contained" color="primary" sx={{ mb: 1 }}>
           <Button onClick={() => handleToolChange('pencil')}>铅笔</Button>
           <Button onClick={() => handleToolChange('eraser')}>橡皮擦</Button>
         </ButtonGroup>
 
         {/* 颜色选择器 */}
-        <Box sx={{ ml: 2 }}>
+        <Box sx={{ ml: 2, position: 'relative', mb: 1 }}>
           <Button variant="contained" color="secondary" onClick={() => setShowColorPicker(!showColorPicker)}>
             颜色选择
           </Button>
           {showColorPicker && (
-            <Box position="absolute" zIndex={2}>
+            <Box
+              sx={{
+                position: 'absolute',
+                top: '40px',
+                zIndex: 2,
+              }}
+            >
               <Box
                 sx={{
                   position: 'fixed',
@@ -162,7 +234,7 @@ const Whiteboard = ({ roomId }) => {
         </Box>
 
         {/* 线条粗细滑动条 */}
-        <Box sx={{ ml: 4, width: 200 }}>
+        <Box sx={{ ml: 2, width: 200, mb: 1 }}>
           <Typography gutterBottom>线条粗细</Typography>
           <Slider
             value={toolWidth}
@@ -176,8 +248,24 @@ const Whiteboard = ({ roomId }) => {
           />
         </Box>
 
+        {/* Zoom 控制按钮 */}
+        <Box sx={{ ml: 2, display: 'flex', alignItems: 'center', mb: 1 }}>
+          <Typography variant="subtitle1" sx={{ mr: 1 }}>
+            缩放:
+          </Typography>
+          <IconButton color="primary" onClick={zoomIn} aria-label="Zoom In">
+            <ZoomInIcon />
+          </IconButton>
+          <IconButton color="primary" onClick={zoomOut} aria-label="Zoom Out">
+            <ZoomOutIcon />
+          </IconButton>
+          <IconButton color="primary" onClick={resetZoom} aria-label="Reset Zoom">
+            <FitScreenIcon />
+          </IconButton>
+        </Box>
+
         {/* 功能按钮 */}
-        <Box sx={{ ml: 4 }}>
+        <Box sx={{ ml: 2, display: 'flex', alignItems: 'center', mb: 1 }}>
           <Button
             variant="outlined"
             color="error"
@@ -206,15 +294,21 @@ const Whiteboard = ({ roomId }) => {
       <Stage
         width={800}
         height={600}
-        style={{ border: '1px solid #ccc' }}
+        style={{ border: '1px solid #ccc', background: '#fff' }}
         onMouseDown={handleMouseDown}
         onMousemove={handleMouseMove}
         onMouseup={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        // 支持触摸设备
         onTouchStart={handleMouseDown}
         onTouchMove={handleMouseMove}
         onTouchEnd={handleMouseUp}
+        onWheel={handleWheel} // 添加滚轮缩放事件
+        scaleX={stageScale}
+        scaleY={stageScale}
+        x={stagePosition.x}
+        y={stagePosition.y}
+        draggable // 允许拖拽
+        onDragEnd={handleDragEnd} // 拖拽结束事件
       >
         <Layer>
           {(lines || []).map((line) => (

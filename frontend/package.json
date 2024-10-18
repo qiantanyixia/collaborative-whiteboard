@@ -12,7 +12,9 @@
   "dependencies": {
     "@emotion/react": "^11.13.3",
     "@emotion/styled": "^11.13.0",
+    "@mui/icons-material": "^6.1.4",
     "@mui/material": "^6.1.2",
+    "@react-hook/resize-observer": "^2.0.2",
     "@reduxjs/toolkit": "^2.2.8",
     "axios": "^1.7.7",
     "fabric": "^6.4.3",
