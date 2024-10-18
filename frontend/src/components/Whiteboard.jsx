@@ -1,18 +1,22 @@
 // src/components/Whiteboard.jsx
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { Stage, Layer, Line } from 'react-konva';
-import { Box, Button, ButtonGroup } from '@mui/material';
+import { Box, Button, ButtonGroup, Slider, Typography } from '@mui/material';
+import { SketchPicker } from 'react-color'; // 引入颜色选择器
 import { SocketContext } from '../utils/SocketContext';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import throttle from 'lodash.throttle';
-import { v4 as uuidv4 } from 'uuid'; // 引入 uuid
+import { v4 as uuidv4 } from 'uuid';
+import { setTool, setColor, setLineWidth } from '../redux/whiteboardSlice'; // 引入 Redux action
 
 const Whiteboard = ({ roomId }) => {
   const [lines, setLines] = useState([]);
   const isDrawing = useRef(false);
-  const [tool, setTool] = useState('pencil'); // 工具状态：'pencil' 或 'eraser'
-  const [color, setColor] = useState('#000000'); // 画笔颜色
-  const [toolWidth, setToolWidth] = useState(2); // 画笔宽度
+  const dispatch = useDispatch();
+  const tool = useSelector((state) => state.whiteboard.tool);
+  const color = useSelector((state) => state.whiteboard.color);
+  const toolWidth = useSelector((state) => state.whiteboard.lineWidth);
+  const [showColorPicker, setShowColorPicker] = useState(false); // 控制颜色选择器显示
   const socket = useContext(SocketContext); // 获取 Socket 实例
 
   const currentUser = useSelector((state) => state.user.user); // 获取当前用户
@@ -114,55 +118,90 @@ const Whiteboard = ({ roomId }) => {
     // 服务器会发送 'loadCanvas' 事件，包含保存的线条数据
   };
 
+  const handleColorChange = (selectedColor) => {
+    dispatch(setColor(selectedColor.hex));
+  };
+
+  const handleToolWidthChange = (event, newValue) => {
+    dispatch(setLineWidth(newValue));
+  };
+
+  const handleToolChange = (selectedTool) => {
+    dispatch(setTool(selectedTool));
+  };
+
   return (
     <Box mt={2}>
-      <Box mb={1}>
+      <Box mb={1} display="flex" alignItems="center">
         {/* 绘图工具选择 */}
         <ButtonGroup variant="contained" color="primary">
-          <Button onClick={() => setTool('pencil')}>铅笔</Button>
-          <Button onClick={() => setTool('eraser')}>橡皮擦</Button>
+          <Button onClick={() => handleToolChange('pencil')}>铅笔</Button>
+          <Button onClick={() => handleToolChange('eraser')}>橡皮擦</Button>
         </ButtonGroup>
 
-        {/* 颜色选择 */}
-        <ButtonGroup variant="contained" color="secondary" sx={{ ml: 2 }}>
-          <Button onClick={() => setColor('#000000')}>黑色</Button>
-          <Button onClick={() => setColor('#ff0000')}>红色</Button>
-          <Button onClick={() => setColor('#00ff00')}>绿色</Button>
-          <Button onClick={() => setColor('#0000ff')}>蓝色</Button>
-        </ButtonGroup>
+        {/* 颜色选择器 */}
+        <Box sx={{ ml: 2 }}>
+          <Button variant="contained" color="secondary" onClick={() => setShowColorPicker(!showColorPicker)}>
+            颜色选择
+          </Button>
+          {showColorPicker && (
+            <Box position="absolute" zIndex={2}>
+              <Box
+                sx={{
+                  position: 'fixed',
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  left: 0,
+                }}
+                onClick={() => setShowColorPicker(false)}
+              />
+              <SketchPicker color={color} onChangeComplete={handleColorChange} />
+            </Box>
+          )}
+        </Box>
 
-        {/* 线条粗细选择 */}
-        <ButtonGroup variant="contained" color="success" sx={{ ml: 2 }}>
-          <Button onClick={() => setToolWidth(2)}>细</Button>
-          <Button onClick={() => setToolWidth(5)}>中</Button>
-          <Button onClick={() => setToolWidth(10)}>粗</Button>
-        </ButtonGroup>
+        {/* 线条粗细滑动条 */}
+        <Box sx={{ ml: 4, width: 200 }}>
+          <Typography gutterBottom>线条粗细</Typography>
+          <Slider
+            value={toolWidth}
+            onChange={handleToolWidthChange}
+            aria-labelledby="line-width-slider"
+            valueLabelDisplay="auto"
+            step={1}
+            marks
+            min={1}
+            max={20}
+          />
+        </Box>
 
         {/* 功能按钮 */}
-        <Button
-          variant="outlined"
-          color="error"
-          sx={{ ml: 2 }}
-          onClick={clearCanvas}
-        >
-          清空白板
-        </Button>
-        <Button
-          variant="outlined"
-          color="info"
-          sx={{ ml: 2 }}
-          onClick={saveCanvas}
-        >
-          保存白板
-        </Button>
-        <Button
-          variant="outlined"
-          color="warning"
-          sx={{ ml: 2 }}
-          onClick={loadCanvas}
-        >
-          加载白板
-        </Button>
+        <Box sx={{ ml: 4 }}>
+          <Button
+            variant="outlined"
+            color="error"
+            sx={{ mr: 2 }}
+            onClick={clearCanvas}
+          >
+            清空白板
+          </Button>
+          <Button
+            variant="outlined"
+            color="info"
+            sx={{ mr: 2 }}
+            onClick={saveCanvas}
+          >
+            保存白板
+          </Button>
+          <Button
+            variant="outlined"
+            color="warning"
+            onClick={loadCanvas}
+          >
+            加载白板
+          </Button>
+        </Box>
       </Box>
       <Stage
         width={800}

@@ -1,7 +1,8 @@
+// src/redux/whiteboardSlice.js
 import { createSlice } from '@reduxjs/toolkit';
 
 const initialState = {
-  tool: 'select',
+  tool: 'pencil',
   color: '#000000',
   lineWidth: 2,
   // Add more settings as needed
