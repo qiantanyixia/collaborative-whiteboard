@@ -2,10 +2,10 @@
 import { createSlice } from '@reduxjs/toolkit';
 
 const initialState = {
-  tool: 'pencil',
+  tool: 'pencil', // 其他工具: 'eraser', 'pan', 'line'
   color: '#000000',
   lineWidth: 2,
-  // Add more settings as needed
+  lineType: 'straight', // 新增的线条类型: 'straight', 'dashed', 'wave', 'arrow', 'polyline', 'bezier', 'arc'
 };
 
 const whiteboardSlice = createSlice({
@@ -21,9 +21,11 @@ const whiteboardSlice = createSlice({
     setLineWidth(state, action) {
       state.lineWidth = action.payload;
     },
-    // Add more reducers as needed
+    setLineType(state, action) {
+      state.lineType = action.payload;
+    },
   },
 });
 
-export const { setTool, setColor, setLineWidth } = whiteboardSlice.actions;
+export const { setTool, setColor, setLineWidth, setLineType } = whiteboardSlice.actions;
 export default whiteboardSlice.reducer;

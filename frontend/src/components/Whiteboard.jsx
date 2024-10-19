@@ -1,26 +1,33 @@
 // src/components/Whiteboard.jsx
 import React, { useState, useRef, useEffect, useContext } from 'react';
-import { Stage, Layer, Line, Rect } from 'react-konva';
-import { Box, Button, ButtonGroup, Slider, Typography, IconButton } from '@mui/material';
+import { Stage, Layer, Line, Arrow, Rect, Path } from 'react-konva';
+import { Box, Button, ButtonGroup, Slider, Typography, IconButton, Menu, MenuItem } from '@mui/material';
 import { SketchPicker } from 'react-color';
 import { SocketContext } from '../utils/SocketContext';
 import { useSelector, useDispatch } from 'react-redux';
 import throttle from 'lodash.throttle';
 import { v4 as uuidv4 } from 'uuid';
-import { setTool, setColor, setLineWidth } from '../redux/whiteboardSlice';
+import { setTool, setColor, setLineWidth, setLineType } from '../redux/whiteboardSlice';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import FitScreenIcon from '@mui/icons-material/FitScreen';
 import MouseIcon from '@mui/icons-material/Mouse';
+import StraightIcon from '@mui/icons-material/LinearScale';
+import DashedIcon from '@mui/icons-material/BorderStyle';
+import WaveIcon from '@mui/icons-material/Waves';
+import ArrowIcon from '@mui/icons-material/CallMissed';
+import BezierIcon from '@mui/icons-material/Functions'; // 替换为存在的图标
+import TimelineIcon from '@mui/icons-material/Timeline'; // 替代 ArcIcon
 import jsPDF from 'jspdf';
 
 const Whiteboard = ({ roomId }) => {
-  const [lines, setLines] = useState([]);
+  const [elements, setElements] = useState([]); // 更名为 elements 以支持不同类型的绘制元素
   const isDrawing = useRef(false);
   const dispatch = useDispatch();
   const tool = useSelector((state) => state.whiteboard.tool);
   const color = useSelector((state) => state.whiteboard.color);
   const toolWidth = useSelector((state) => state.whiteboard.lineWidth);
+  const lineType = useSelector((state) => state.whiteboard.lineType);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const socket = useContext(SocketContext);
 
@@ -32,11 +39,18 @@ const Whiteboard = ({ roomId }) => {
 
   // 父容器引用和尺寸状态
   const containerRef = useRef(null);
-  const stageRef = useRef(null); // Stage 引用
+  const stageRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: window.innerWidth * 0.75, height: window.innerHeight - 150 });
 
   // 控制网格显示的状态
   const [showGrid, setShowGrid] = useState(false);
+
+  // 菜单状态
+  const [anchorEl, setAnchorEl] = useState(null);
+  const open = Boolean(anchorEl);
+
+  // 优化绘图性能：使用 useRef 记录当前绘制元素，避免频繁更新 state
+  const currentElementRef = useRef(null);
 
   useEffect(() => {
     const updateDimensions = () => {
@@ -66,18 +80,18 @@ const Whiteboard = ({ roomId }) => {
 
     // 监听清空白板事件
     socket.on('clearCanvas', () => {
-      setLines([]);
+      setElements([]);
     });
 
     // 监听绘图事件
-    socket.on('drawLine', (newLine) => {
-      setLines((prevLines) => [...prevLines, newLine]);
+    socket.on('drawElement', (newElement) => {
+      setElements((prevElements) => [...prevElements, newElement]);
     });
 
     // 清理事件监听器
     return () => {
       socket.off('clearCanvas');
-      socket.off('drawLine');
+      socket.off('drawElement');
     };
   }, [socket, roomId]);
 
@@ -94,45 +108,89 @@ const Whiteboard = ({ roomId }) => {
     isDrawing.current = true;
     const stage = e.target.getStage();
     const pos = getRelativePointerPosition(stage);
-    // 创建新线条，分配唯一 ID
-    const newLine = {
+
+    // 创建新绘制元素
+    const newElement = {
       id: uuidv4(),
       tool,
+      lineType: tool === 'line' ? lineType : null, // 如果是划线工具，记录线条类型
       color: tool === 'eraser' ? '#ffffff' : color,
       width: tool === 'eraser' ? 10 : toolWidth,
       points: [pos.x, pos.y],
       roomId,
       userId: currentUser.id,
     };
-    setLines([...lines, newLine]);
-    // 向服务器发送新线条
-    socket.emit('drawLine', newLine);
+
+    if (tool === 'line' || tool === 'arrow' || tool === 'bezier' || tool === 'arc') {
+      currentElementRef.current = newElement; // 使用 ref 记录当前绘制元素
+      setElements((prevElements) => [...prevElements, newElement]);
+      socket.emit('drawElement', newElement);
+    } else {
+      setElements((prevElements) => [...prevElements, newElement]);
+      socket.emit('drawElement', newElement);
+    }
   };
 
   // 使用节流函数控制发送频率
-  const throttledEmitDraw = throttle((lastLine) => {
-    socket.emit('drawLine', lastLine);
-  }, 50); // 50ms 节流间隔，根据需要调整
+  const throttledEmitDraw = useRef(
+    throttle((newElement) => {
+      socket.emit('drawElement', newElement);
+    }, 50)
+  ).current;
 
   const handleMouseMove = (e) => {
     if (!isDrawing.current) return;
     const stage = e.target.getStage();
     const pos = getRelativePointerPosition(stage);
-    let lastLine = lines[lines.length - 1];
-    if (!lastLine) return;
 
-    // 添加新的点
-    lastLine.points = lastLine.points.concat([pos.x, pos.y]);
-    const updatedLines = lines.slice();
-    updatedLines[lines.length - 1] = lastLine;
-    setLines(updatedLines);
+    if (currentElementRef.current) {
+      // 更新当前绘制元素
+      const updatedElement = { ...currentElementRef.current };
 
-    // 向服务器发送更新后的线条信息，使用节流
-    throttledEmitDraw(lastLine);
+      switch (updatedElement.tool) {
+        case 'line':
+        case 'arrow':
+          updatedElement.points = [updatedElement.points[0], updatedElement.points[1], pos.x, pos.y];
+          break;
+        case 'bezier':
+          // 贝塞尔曲线需要控制点，这里简化为使用当前点
+          // 可以根据需要调整控制点的位置
+          updatedElement.points = [updatedElement.points[0], updatedElement.points[1], pos.x, pos.y];
+          break;
+        case 'arc':
+          updatedElement.points = [updatedElement.points[0], updatedElement.points[1], pos.x, pos.y];
+          break;
+        default:
+          updatedElement.points = [...updatedElement.points, pos.x, pos.y];
+      }
+
+      currentElementRef.current = updatedElement;
+      setElements((prevElements) =>
+        prevElements.map((el) => (el.id === updatedElement.id ? updatedElement : el))
+      );
+
+      throttledEmitDraw(updatedElement);
+    } else {
+      // 其他工具如铅笔、橡皮擦的绘制
+      const lastElement = elements[elements.length - 1];
+      if (!lastElement) return;
+
+      // 添加新的点
+      lastElement.points = lastElement.points.concat([pos.x, pos.y]);
+      setElements((prevElements) => {
+        const updatedElements = [...prevElements];
+        updatedElements[updatedElements.length - 1] = lastElement;
+        return updatedElements;
+      });
+
+      // 使用节流发送
+      throttledEmitDraw(lastElement);
+    }
   };
 
   const handleMouseUp = () => {
     isDrawing.current = false;
+    currentElementRef.current = null;
   };
 
   const getRelativePointerPosition = (stage) => {
@@ -145,14 +203,11 @@ const Whiteboard = ({ roomId }) => {
       y: (pointer.y - stagePosition.y) / stageScale,
     };
 
-    console.log('Pointer Position:', pointer);
-    console.log('Relative Position:', relativePos);
-
     return relativePos;
   };
 
   const clearCanvas = () => {
-    setLines([]);
+    setElements([]);
     socket.emit('clearCanvas', { roomId });
   };
 
@@ -204,6 +259,16 @@ const Whiteboard = ({ roomId }) => {
 
   const handleToolChange = (selectedTool) => {
     dispatch(setTool(selectedTool));
+    // 如果切换到其他工具，取消当前绘制
+    currentElementRef.current = null;
+    setElements((prevElements) =>
+      prevElements.map((el) => {
+        if (el.userId === currentUser.id && el.tool === selectedTool) {
+          return { ...el, tool: selectedTool }; // 保持当前绘制元素
+        }
+        return el;
+      })
+    );
   };
 
   // 处理缩放
@@ -268,6 +333,44 @@ const Whiteboard = ({ roomId }) => {
     setStagePosition({ x: 0, y: 0 });
   };
 
+  // 线条类型菜单的处理函数
+  const handleLineTypeClick = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleLineTypeClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleLineTypeSelect = (type) => {
+    dispatch(setLineType(type));
+    handleLineTypeClose();
+  };
+
+  // 根据线条类型生成波浪线点（已移除波浪线）
+  // 移除此函数或保留仅用于贝塞尔和其他曲线
+  const generateWavePoints = (points) => {
+    // 已移除波浪线相关代码
+    return points;
+  };
+
+  // 生成贝塞尔曲线路径
+  const generateBezierPath = (points) => {
+    if (points.length < 4) return '';
+
+    const [x0, y0, x1, y1] = points;
+    return `M${x0},${y0} Q${(x0 + x1) / 2},${y0 - 50} ${x1},${y1}`;
+  };
+
+  // 生成圆弧线路径
+  const generateArcPath = (points) => {
+    if (points.length < 4) return '';
+
+    const [x0, y0, x1, y1] = points;
+    // 简单的圆弧，半径为50
+    return `M${x0},${y0} A50,50 0 0,1 ${x1},${y1}`;
+  };
+
   return (
     <Box mt={2} ref={containerRef} sx={{ width: '100%', height: 'calc(100vh - 150px)', position: 'relative' }}>
       <Box mb={1} display="flex" alignItems="center" flexWrap="wrap">
@@ -278,10 +381,62 @@ const Whiteboard = ({ roomId }) => {
           <Button onClick={() => handleToolChange('pan')} startIcon={<MouseIcon />}>
             拖拽
           </Button>
+          <Button onClick={() => handleToolChange('line')}>选择线条</Button>
         </ButtonGroup>
 
+        {/* 线条类型选择按钮，仅在选择线条工具时显示 */}
+        {tool === 'line' && (
+          <>
+            <Button
+              variant="contained"
+              color="secondary"
+              onClick={handleLineTypeClick}
+              sx={{ ml: 2, mb: 1 }}
+              startIcon={
+                lineType === 'straight' ? <StraightIcon /> :
+                lineType === 'dashed' ? <DashedIcon /> :
+                lineType === 'arrow' ? <ArrowIcon /> :
+                lineType === 'bezier' ? <BezierIcon /> :
+                lineType === 'arc' ? <TimelineIcon /> : // 使用 TimelineIcon 代替 ArcIcon
+                null
+              }
+            >
+              {`线条: ${
+                lineType === 'straight'
+                  ? '直线'
+                  : lineType === 'dashed'
+                  ? '虚线'
+                  : lineType === 'arrow'
+                  ? '箭头线'
+                  : lineType === 'bezier'
+                  ? '贝塞尔曲线'
+                  : lineType === 'arc'
+                  ? '圆弧线'
+                  : ''
+              }`}
+            </Button>
+            <Menu anchorEl={anchorEl} open={open} onClose={handleLineTypeClose}>
+              <MenuItem onClick={() => handleLineTypeSelect('straight')}>
+                <StraightIcon sx={{ mr: 1 }} /> 直线
+              </MenuItem>
+              <MenuItem onClick={() => handleLineTypeSelect('dashed')}>
+                <DashedIcon sx={{ mr: 1 }} /> 虚线
+              </MenuItem>
+              <MenuItem onClick={() => handleLineTypeSelect('arrow')}>
+                <ArrowIcon sx={{ mr: 1 }} /> 箭头线
+              </MenuItem>
+              <MenuItem onClick={() => handleLineTypeSelect('bezier')}>
+                <BezierIcon sx={{ mr: 1 }} /> 贝塞尔曲线
+              </MenuItem>
+              <MenuItem onClick={() => handleLineTypeSelect('arc')}>
+                <TimelineIcon sx={{ mr: 1 }} /> 圆弧线 {/* 使用 TimelineIcon 代替 ArcIcon */}
+              </MenuItem>
+            </Menu>
+          </>
+        )}
+
         {/* 颜色选择器和线条粗细滑动条仅在绘图模式下显示 */}
-        {tool !== 'pan' && (
+        {(tool !== 'pan' && tool !== 'line') && (
           <>
             <Box sx={{ ml: 2, position: 'relative', mb: 1 }}>
               <Button variant="contained" color="secondary" onClick={() => setShowColorPicker(!showColorPicker)}>
@@ -359,7 +514,7 @@ const Whiteboard = ({ roomId }) => {
         </Box>
       </Box>
       <Stage
-        ref={stageRef} // 传递 Stage 引用
+        ref={stageRef}
         width={dimensions.width}
         height={dimensions.height}
         style={{ border: '1px solid #ccc', background: '#fff', zIndex: 1 }}
@@ -370,13 +525,13 @@ const Whiteboard = ({ roomId }) => {
         onTouchStart={handleMouseDown}
         onTouchMove={handleMouseMove}
         onTouchEnd={handleMouseUp}
-        onWheel={handleWheel} // 添加滚轮缩放事件
+        onWheel={handleWheel}
         scaleX={stageScale}
         scaleY={stageScale}
         x={stagePosition.x}
         y={stagePosition.y}
-        draggable={tool === 'pan'} // 仅当工具为“拖拽”时允许拖拽
-        onDragEnd={handleDragEnd} // 拖拽结束事件
+        draggable={tool === 'pan'}
+        onDragEnd={handleDragEnd}
       >
         {/* 第一层：背景 */}
         <Layer>
@@ -412,7 +567,7 @@ const Whiteboard = ({ roomId }) => {
                 return (
                   <Line
                     key={`h-${i}`}
-                    points={[ -10000, y, 10000, y]}
+                    points={[-10000, y, 10000, y]}
                     stroke="#ddd"
                     strokeWidth={1}
                     dash={[4, 4]}
@@ -423,23 +578,99 @@ const Whiteboard = ({ roomId }) => {
           )}
         </Layer>
 
-        {/* 第三层：用户绘制的线条 */}
+        {/* 第三层：用户绘制的元素 */}
         <Layer>
-          {(lines || []).map((line) => (
-            line.points.length >= 2 && (
-              <Line
-                key={line.id} // 使用唯一 ID 作为键
-                points={line.points}
-                stroke={line.color}
-                strokeWidth={line.width}
-                tension={0.5}
-                lineCap="round"
-                globalCompositeOperation={
-                  line.tool === 'eraser' ? 'destination-out' : 'source-over'
+          {(elements || []).map((el) => {
+            switch (el.tool) {
+              case 'pencil':
+              case 'eraser':
+                return (
+                  el.points.length >= 2 && (
+                    <Line
+                      key={el.id}
+                      points={el.points}
+                      stroke={el.color}
+                      strokeWidth={el.width}
+                      tension={0.5}
+                      lineCap="round"
+                      globalCompositeOperation={
+                        el.tool === 'eraser' ? 'destination-out' : 'source-over'
+                      }
+                    />
+                  )
+                );
+              case 'line':
+                if (!el.lineType) return null;
+                switch (el.lineType) {
+                  case 'straight':
+                    // 使用单一的起点和终点绘制直线
+                    return (
+                      <Line
+                        key={el.id}
+                        points={el.points.slice(0, 4)}
+                        stroke={el.color}
+                        strokeWidth={el.width}
+                        lineCap="round"
+                        dash={[]}
+                        globalCompositeOperation={el.tool === 'eraser' ? 'destination-out' : 'source-over'}
+                      />
+                    );
+                  case 'dashed':
+                    return (
+                      <Line
+                        key={el.id}
+                        points={el.points}
+                        stroke={el.color}
+                        strokeWidth={el.width}
+                        lineCap="round"
+                        dash={[10, 5]}
+                        globalCompositeOperation={el.tool === 'eraser' ? 'destination-out' : 'source-over'}
+                      />
+                    );
+                  case 'arrow':
+                    return (
+                      <Arrow
+                        key={el.id}
+                        points={el.points}
+                        stroke={el.color}
+                        strokeWidth={el.width}
+                        pointerLength={10}
+                        pointerWidth={10}
+                        fill={el.color}
+                        globalCompositeOperation={el.tool === 'eraser' ? 'destination-out' : 'source-over'}
+                      />
+                    );
+                  case 'bezier':
+                    return (
+                      <Path
+                        key={el.id}
+                        data={generateBezierPath(el.points)}
+                        stroke={el.color}
+                        strokeWidth={el.width}
+                        lineCap="round"
+                        fillEnabled={false} // 禁用填充，使内部透明
+                        globalCompositeOperation={el.tool === 'eraser' ? 'destination-out' : 'source-over'}
+                      />
+                    );
+                  case 'arc':
+                    return (
+                      <Path
+                        key={el.id}
+                        data={generateArcPath(el.points)}
+                        stroke={el.color}
+                        strokeWidth={el.width}
+                        lineCap="round"
+                        fillEnabled={false} // 禁用填充，使内部透明
+                        globalCompositeOperation={el.tool === 'eraser' ? 'destination-out' : 'source-over'}
+                      />
+                    );
+                  default:
+                    return null;
                 }
-              />
-            )
-          ))}
+              default:
+                return null;
+            }
+          })}
         </Layer>
       </Stage>
     </Box>
