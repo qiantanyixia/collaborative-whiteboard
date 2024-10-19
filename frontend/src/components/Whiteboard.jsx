@@ -7,10 +7,11 @@ import { SocketContext } from '../utils/SocketContext';
 import { useSelector, useDispatch } from 'react-redux';
 import throttle from 'lodash.throttle';
 import { v4 as uuidv4 } from 'uuid';
-import { setTool, setColor, setLineWidth } from '../redux/whiteboardSlice'; // 引入 Redux action
+import { setTool, setColor, setLineWidth } from '../redux/whiteboardSlice';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import FitScreenIcon from '@mui/icons-material/FitScreen';
+import MouseIcon from '@mui/icons-material/Mouse';
 
 const Whiteboard = ({ roomId }) => {
   const [lines, setLines] = useState([]);
@@ -19,14 +20,41 @@ const Whiteboard = ({ roomId }) => {
   const tool = useSelector((state) => state.whiteboard.tool);
   const color = useSelector((state) => state.whiteboard.color);
   const toolWidth = useSelector((state) => state.whiteboard.lineWidth);
-  const [showColorPicker, setShowColorPicker] = useState(false); // 控制颜色选择器显示
-  const socket = useContext(SocketContext); // 获取 Socket 实例
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const socket = useContext(SocketContext);
 
-  const currentUser = useSelector((state) => state.user.user); // 获取当前用户
+  const currentUser = useSelector((state) => state.user.user);
 
   // 缩放和拖拽相关状态
   const [stageScale, setStageScale] = useState(1);
   const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 });
+
+  // 父容器引用和尺寸状态
+  const containerRef = useRef(null);
+  const [dimensions, setDimensions] = useState({ width: window.innerWidth * 0.75, height: window.innerHeight - 150 });
+
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        setDimensions({
+          width: containerRef.current.offsetWidth,
+          height: containerRef.current.offsetHeight,
+        });
+      } else {
+        setDimensions({
+          width: window.innerWidth * 0.75,
+          height: window.innerHeight - 150,
+        });
+      }
+    };
+
+    // 初始化尺寸
+    updateDimensions();
+
+    // 监听窗口变化
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
 
   useEffect(() => {
     if (!socket || !roomId) return;
@@ -41,7 +69,7 @@ const Whiteboard = ({ roomId }) => {
 
     // 监听加载白板事件
     socket.on('loadCanvas', (savedLines) => {
-      setLines(savedLines || []); // 确保 savedLines 为数组
+      setLines(savedLines || []);
     });
 
     // 监听绘图事件
@@ -57,16 +85,22 @@ const Whiteboard = ({ roomId }) => {
     };
   }, [socket, roomId]);
 
+  // 添加日志以验证当前工具
+  useEffect(() => {
+    console.log('当前选择的工具:', tool);
+    console.log('Stage draggable:', tool === 'pan');
+  }, [tool]);
+
   const handleMouseDown = (e) => {
-    // 如果用户正在拖拽，请勿触发绘图
-    if (e.target === e.target.getStage()) return;
+    // 如果当前工具是“拖拽”，则不进行绘图
+    if (tool === 'pan') return;
 
     isDrawing.current = true;
     const stage = e.target.getStage();
     const pos = getRelativePointerPosition(stage);
     // 创建新线条，分配唯一 ID
     const newLine = {
-      id: uuidv4(), // 生成唯一 ID
+      id: uuidv4(),
       tool,
       color: tool === 'eraser' ? '#ffffff' : color,
       width: tool === 'eraser' ? 10 : toolWidth,
@@ -94,7 +128,7 @@ const Whiteboard = ({ roomId }) => {
     // 添加新的点
     lastLine.points = lastLine.points.concat([pos.x, pos.y]);
     const updatedLines = lines.slice();
-    updatedLines[updatedLines.length - 1] = lastLine;
+    updatedLines[lines.length - 1] = lastLine;
     setLines(updatedLines);
 
     // 向服务器发送更新后的线条信息，使用节流
@@ -107,12 +141,23 @@ const Whiteboard = ({ roomId }) => {
 
   const getRelativePointerPosition = (stage) => {
     const pointer = stage.getPointerPosition();
-    return { x: pointer.x, y: pointer.y };
+    if (!pointer) return { x: 0, y: 0 };
+
+    // 计算逻辑坐标
+    const relativePos = {
+      x: (pointer.x - stagePosition.x) / stageScale,
+      y: (pointer.y - stagePosition.y) / stageScale,
+    };
+
+    console.log('Pointer Position:', pointer);
+    console.log('Relative Position:', relativePos);
+
+    return relativePos;
   };
 
   const clearCanvas = () => {
     setLines([]);
-    socket.emit('clearCanvas', { roomId }); // 向服务器发送清空白板事件
+    socket.emit('clearCanvas', { roomId });
   };
 
   const saveCanvas = () => {
@@ -145,20 +190,22 @@ const Whiteboard = ({ roomId }) => {
     e.evt.preventDefault();
 
     const scaleBy = 1.05;
-    const stage = e.target.getStage();
-    const oldScale = stage.scaleX();
+    const oldScale = stageScale;
 
-    const pointer = stage.getPointerPosition();
+    const pointer = e.target.getStage().getPointerPosition();
 
     const mousePointTo = {
-      x: (pointer.x - stage.x()) / oldScale,
-      y: (pointer.y - stage.y()) / oldScale,
+      x: (pointer.x - stagePosition.x) / oldScale,
+      y: (pointer.y - stagePosition.y) / oldScale,
     };
 
     // 判断滚轮方向
     const direction = e.evt.deltaY > 0 ? 1 : -1;
 
-    const newScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
+    let newScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
+
+    // 设置缩放范围
+    newScale = Math.max(0.1, Math.min(newScale, 10));
 
     setStageScale(newScale);
 
@@ -181,13 +228,15 @@ const Whiteboard = ({ roomId }) => {
   // Zoom 控制按钮
   const zoomIn = () => {
     const scaleBy = 1.2;
-    const newScale = stageScale * scaleBy;
+    let newScale = stageScale * scaleBy;
+    newScale = Math.max(0.1, Math.min(newScale, 10));
     setStageScale(newScale);
   };
 
   const zoomOut = () => {
     const scaleBy = 1.2;
-    const newScale = stageScale / scaleBy;
+    let newScale = stageScale / scaleBy;
+    newScale = Math.max(0.1, Math.min(newScale, 10));
     setStageScale(newScale);
   };
 
@@ -197,56 +246,62 @@ const Whiteboard = ({ roomId }) => {
   };
 
   return (
-    <Box mt={2}>
+    <Box mt={2} ref={containerRef} sx={{ width: '100%', height: 'calc(100vh - 150px)', position: 'relative' }}>
       <Box mb={1} display="flex" alignItems="center" flexWrap="wrap">
         {/* 绘图工具选择 */}
         <ButtonGroup variant="contained" color="primary" sx={{ mb: 1 }}>
           <Button onClick={() => handleToolChange('pencil')}>铅笔</Button>
           <Button onClick={() => handleToolChange('eraser')}>橡皮擦</Button>
+          <Button onClick={() => handleToolChange('pan')} startIcon={<MouseIcon />}>
+            拖拽
+          </Button>
         </ButtonGroup>
 
-        {/* 颜色选择器 */}
-        <Box sx={{ ml: 2, position: 'relative', mb: 1 }}>
-          <Button variant="contained" color="secondary" onClick={() => setShowColorPicker(!showColorPicker)}>
-            颜色选择
-          </Button>
-          {showColorPicker && (
-            <Box
-              sx={{
-                position: 'absolute',
-                top: '40px',
-                zIndex: 2,
-              }}
-            >
-              <Box
-                sx={{
-                  position: 'fixed',
-                  top: 0,
-                  right: 0,
-                  bottom: 0,
-                  left: 0,
-                }}
-                onClick={() => setShowColorPicker(false)}
-              />
-              <SketchPicker color={color} onChangeComplete={handleColorChange} />
+        {/* 颜色选择器和线条粗细滑动条仅在绘图模式下显示 */}
+        {tool !== 'pan' && (
+          <>
+            <Box sx={{ ml: 2, position: 'relative', mb: 1 }}>
+              <Button variant="contained" color="secondary" onClick={() => setShowColorPicker(!showColorPicker)}>
+                颜色选择
+              </Button>
+              {showColorPicker && (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: '40px',
+                    zIndex: 2,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      position: 'fixed',
+                      top: 0,
+                      right: 0,
+                      bottom: 0,
+                      left: 0,
+                    }}
+                    onClick={() => setShowColorPicker(false)}
+                  />
+                  <SketchPicker color={color} onChangeComplete={handleColorChange} />
+                </Box>
+              )}
             </Box>
-          )}
-        </Box>
 
-        {/* 线条粗细滑动条 */}
-        <Box sx={{ ml: 2, width: 200, mb: 1 }}>
-          <Typography gutterBottom>线条粗细</Typography>
-          <Slider
-            value={toolWidth}
-            onChange={handleToolWidthChange}
-            aria-labelledby="line-width-slider"
-            valueLabelDisplay="auto"
-            step={1}
-            marks
-            min={1}
-            max={20}
-          />
-        </Box>
+            <Box sx={{ ml: 2, width: 200, mb: 1 }}>
+              <Typography gutterBottom>线条粗细</Typography>
+              <Slider
+                value={toolWidth}
+                onChange={handleToolWidthChange}
+                aria-labelledby="line-width-slider"
+                valueLabelDisplay="auto"
+                step={1}
+                marks
+                min={1}
+                max={20}
+              />
+            </Box>
+          </>
+        )}
 
         {/* Zoom 控制按钮 */}
         <Box sx={{ ml: 2, display: 'flex', alignItems: 'center', mb: 1 }}>
@@ -292,12 +347,12 @@ const Whiteboard = ({ roomId }) => {
         </Box>
       </Box>
       <Stage
-        width={800}
-        height={600}
-        style={{ border: '1px solid #ccc', background: '#fff' }}
+        width={dimensions.width}
+        height={dimensions.height}
+        style={{ border: '1px solid #ccc', background: '#fff', zIndex: 1 }}
         onMouseDown={handleMouseDown}
-        onMousemove={handleMouseMove}
-        onMouseup={handleMouseUp}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onTouchStart={handleMouseDown}
         onTouchMove={handleMouseMove}
@@ -307,10 +362,13 @@ const Whiteboard = ({ roomId }) => {
         scaleY={stageScale}
         x={stagePosition.x}
         y={stagePosition.y}
-        draggable // 允许拖拽
+        draggable={tool === 'pan'} // 仅当工具为“拖拽”时允许拖拽
         onDragEnd={handleDragEnd} // 拖拽结束事件
       >
         <Layer>
+          
+
+          {/* 绘制所有线条 */}
           {(lines || []).map((line) => (
             line.points.length >= 2 && (
               <Line
