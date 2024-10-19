@@ -1,27 +1,40 @@
 // src/components/Whiteboard.jsx
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { Stage, Layer, Line, Arrow, Rect, Path } from 'react-konva';
-import { Box, Button, ButtonGroup, Slider, Typography, IconButton, Menu, MenuItem } from '@mui/material';
+import {
+  Box,
+  Button,
+  ButtonGroup,
+  Slider,
+  Typography,
+  IconButton,
+  Menu,
+  MenuItem,
+} from '@mui/material';
 import { SketchPicker } from 'react-color';
 import { SocketContext } from '../utils/SocketContext';
 import { useSelector, useDispatch } from 'react-redux';
 import throttle from 'lodash.throttle';
 import { v4 as uuidv4 } from 'uuid';
-import { setTool, setColor, setLineWidth, setLineType } from '../redux/whiteboardSlice';
+import {
+  setTool,
+  setColor,
+  setLineWidth,
+  setLineType,
+} from '../redux/whiteboardSlice';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import FitScreenIcon from '@mui/icons-material/FitScreen';
 import MouseIcon from '@mui/icons-material/Mouse';
 import StraightIcon from '@mui/icons-material/LinearScale';
 import DashedIcon from '@mui/icons-material/BorderStyle';
-import WaveIcon from '@mui/icons-material/Waves';
 import ArrowIcon from '@mui/icons-material/CallMissed';
-import BezierIcon from '@mui/icons-material/Functions'; // 替换为存在的图标
+import BezierIcon from '@mui/icons-material/Functions'; // 替代 Curve
 import TimelineIcon from '@mui/icons-material/Timeline'; // 替代 ArcIcon
 import jsPDF from 'jspdf';
 
 const Whiteboard = ({ roomId }) => {
-  const [elements, setElements] = useState([]); // 更名为 elements 以支持不同类型的绘制元素
+  const [elements, setElements] = useState([]); // 支持不同类型的绘制元素
   const isDrawing = useRef(false);
   const dispatch = useDispatch();
   const tool = useSelector((state) => state.whiteboard.tool);
@@ -40,14 +53,17 @@ const Whiteboard = ({ roomId }) => {
   // 父容器引用和尺寸状态
   const containerRef = useRef(null);
   const stageRef = useRef(null);
-  const [dimensions, setDimensions] = useState({ width: window.innerWidth * 0.75, height: window.innerHeight - 150 });
+  const [dimensions, setDimensions] = useState({
+    width: window.innerWidth * 0.75,
+    height: window.innerHeight - 150,
+  });
 
   // 控制网格显示的状态
   const [showGrid, setShowGrid] = useState(false);
 
   // 菜单状态
   const [anchorEl, setAnchorEl] = useState(null);
-  const open = Boolean(anchorEl);
+  const openMenu = Boolean(anchorEl);
 
   // 优化绘图性能：使用 useRef 记录当前绘制元素，避免频繁更新 state
   const currentElementRef = useRef(null);
@@ -75,25 +91,35 @@ const Whiteboard = ({ roomId }) => {
     return () => window.removeEventListener('resize', updateDimensions);
   }, []);
 
+  // 处理Socket.io事件
   useEffect(() => {
     if (!socket || !roomId) return;
+
+    // 加入房间
+    socket.emit('joinRoom', { roomId, user: currentUser });
 
     // 监听清空白板事件
     socket.on('clearCanvas', () => {
       setElements([]);
     });
 
+    // 监听加载白板事件
+    socket.on('loadCanvas', (canvasData) => {
+      setElements(canvasData);
+    });
+
     // 监听绘图事件
-    socket.on('drawElement', (newElement) => {
+    socket.on('drawLine', (newElement) => {
       setElements((prevElements) => [...prevElements, newElement]);
     });
 
     // 清理事件监听器
     return () => {
       socket.off('clearCanvas');
-      socket.off('drawElement');
+      socket.off('loadCanvas');
+      socket.off('drawLine');
     };
-  }, [socket, roomId]);
+  }, [socket, roomId, currentUser]);
 
   // 添加日志以验证当前工具
   useEffect(() => {
@@ -110,10 +136,11 @@ const Whiteboard = ({ roomId }) => {
     const pos = getRelativePointerPosition(stage);
 
     // 创建新绘制元素
+    const id = uuidv4();
     const newElement = {
-      id: uuidv4(),
+      id,
       tool,
-      lineType: tool === 'line' ? lineType : null, // 如果是划线工具，记录线条类型
+      lineType: tool === 'line' ? lineType : null, // 如果是选择线条工具，记录线条类型
       color: tool === 'eraser' ? '#ffffff' : color,
       width: tool === 'eraser' ? 10 : toolWidth,
       points: [pos.x, pos.y],
@@ -124,17 +151,17 @@ const Whiteboard = ({ roomId }) => {
     if (tool === 'line' || tool === 'arrow' || tool === 'bezier' || tool === 'arc') {
       currentElementRef.current = newElement; // 使用 ref 记录当前绘制元素
       setElements((prevElements) => [...prevElements, newElement]);
-      socket.emit('drawElement', newElement);
+      // **不在这里发送drawLine事件**
     } else {
       setElements((prevElements) => [...prevElements, newElement]);
-      socket.emit('drawElement', newElement);
+      // **不在这里发送drawLine事件**
     }
   };
 
   // 使用节流函数控制发送频率
   const throttledEmitDraw = useRef(
-    throttle((newElement) => {
-      socket.emit('drawElement', newElement);
+    throttle((updatedElement) => {
+      socket.emit('drawLine', updatedElement);
     }, 50)
   ).current;
 
@@ -150,15 +177,29 @@ const Whiteboard = ({ roomId }) => {
       switch (updatedElement.tool) {
         case 'line':
         case 'arrow':
-          updatedElement.points = [updatedElement.points[0], updatedElement.points[1], pos.x, pos.y];
+          updatedElement.points = [
+            updatedElement.points[0],
+            updatedElement.points[1],
+            pos.x,
+            pos.y,
+          ];
           break;
         case 'bezier':
           // 贝塞尔曲线需要控制点，这里简化为使用当前点
-          // 可以根据需要调整控制点的位置
-          updatedElement.points = [updatedElement.points[0], updatedElement.points[1], pos.x, pos.y];
+          updatedElement.points = [
+            updatedElement.points[0],
+            updatedElement.points[1],
+            pos.x,
+            pos.y,
+          ];
           break;
         case 'arc':
-          updatedElement.points = [updatedElement.points[0], updatedElement.points[1], pos.x, pos.y];
+          updatedElement.points = [
+            updatedElement.points[0],
+            updatedElement.points[1],
+            pos.x,
+            pos.y,
+          ];
           break;
         default:
           updatedElement.points = [...updatedElement.points, pos.x, pos.y];
@@ -169,7 +210,7 @@ const Whiteboard = ({ roomId }) => {
         prevElements.map((el) => (el.id === updatedElement.id ? updatedElement : el))
       );
 
-      throttledEmitDraw(updatedElement);
+      // **不在这里发送drawLine事件**
     } else {
       // 其他工具如铅笔、橡皮擦的绘制
       const lastElement = elements[elements.length - 1];
@@ -190,7 +231,11 @@ const Whiteboard = ({ roomId }) => {
 
   const handleMouseUp = () => {
     isDrawing.current = false;
-    currentElementRef.current = null;
+    if (currentElementRef.current) {
+      // 绘制完成后发送drawLine事件
+      socket.emit('drawLine', currentElementRef.current);
+      currentElementRef.current = null;
+    }
   };
 
   const getRelativePointerPosition = (stage) => {
@@ -237,7 +282,10 @@ const Whiteboard = ({ roomId }) => {
     }
 
     const dataURL = stageRef.current.toDataURL({ pixelRatio: 3 });
-    const pdf = new jsPDF('landscape', 'px', [dimensions.width, dimensions.height]);
+    const pdf = new jsPDF('landscape', 'px', [
+      dimensions.width,
+      dimensions.height,
+    ]);
 
     // 添加 PNG 图片到 PDF
     pdf.addImage(dataURL, 'PNG', 0, 0, dimensions.width, dimensions.height);
@@ -259,16 +307,10 @@ const Whiteboard = ({ roomId }) => {
 
   const handleToolChange = (selectedTool) => {
     dispatch(setTool(selectedTool));
-    // 如果切换到其他工具，取消当前绘制
-    currentElementRef.current = null;
-    setElements((prevElements) =>
-      prevElements.map((el) => {
-        if (el.userId === currentUser.id && el.tool === selectedTool) {
-          return { ...el, tool: selectedTool }; // 保持当前绘制元素
-        }
-        return el;
-      })
-    );
+    // 如果切换到线条工具，保留当前绘制元素
+    if (selectedTool !== 'line') {
+      currentElementRef.current = null;
+    }
   };
 
   // 处理缩放
@@ -290,7 +332,8 @@ const Whiteboard = ({ roomId }) => {
     // 判断滚轮方向
     const direction = e.evt.deltaY > 0 ? 1 : -1;
 
-    let newScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
+    let newScale =
+      direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
 
     // 设置缩放范围
     newScale = Math.max(0.1, Math.min(newScale, 10));
@@ -347,13 +390,6 @@ const Whiteboard = ({ roomId }) => {
     handleLineTypeClose();
   };
 
-  // 根据线条类型生成波浪线点（已移除波浪线）
-  // 移除此函数或保留仅用于贝塞尔和其他曲线
-  const generateWavePoints = (points) => {
-    // 已移除波浪线相关代码
-    return points;
-  };
-
   // 生成贝塞尔曲线路径
   const generateBezierPath = (points) => {
     if (points.length < 4) return '';
@@ -372,7 +408,11 @@ const Whiteboard = ({ roomId }) => {
   };
 
   return (
-    <Box mt={2} ref={containerRef} sx={{ width: '100%', height: 'calc(100vh - 150px)', position: 'relative' }}>
+    <Box
+      mt={2}
+      ref={containerRef}
+      sx={{ width: '100%', height: 'calc(100vh - 150px)', position: 'relative' }}
+    >
       <Box mb={1} display="flex" alignItems="center" flexWrap="wrap">
         {/* 绘图工具选择 */}
         <ButtonGroup variant="contained" color="primary" sx={{ mb: 1 }}>
@@ -415,7 +455,7 @@ const Whiteboard = ({ roomId }) => {
                   : ''
               }`}
             </Button>
-            <Menu anchorEl={anchorEl} open={open} onClose={handleLineTypeClose}>
+            <Menu anchorEl={anchorEl} open={openMenu} onClose={handleLineTypeClose}>
               <MenuItem onClick={() => handleLineTypeSelect('straight')}>
                 <StraightIcon sx={{ mr: 1 }} /> 直线
               </MenuItem>
@@ -439,7 +479,11 @@ const Whiteboard = ({ roomId }) => {
         {(tool !== 'pan' && tool !== 'line') && (
           <>
             <Box sx={{ ml: 2, position: 'relative', mb: 1 }}>
-              <Button variant="contained" color="secondary" onClick={() => setShowColorPicker(!showColorPicker)}>
+              <Button
+                variant="contained"
+                color="secondary"
+                onClick={() => setShowColorPicker(!showColorPicker)}
+              >
                 颜色选择
               </Button>
               {showColorPicker && (
@@ -549,7 +593,7 @@ const Whiteboard = ({ roomId }) => {
           {showGrid && (
             <>
               {/* 纵向网格线 */}
-              {[...Array(401)].map((_, i) => { // 401 * 50 = 20050
+              {[...Array(401)].map((_, i) => {
                 const x = i * 50 - 10000;
                 return (
                   <Line
@@ -562,7 +606,7 @@ const Whiteboard = ({ roomId }) => {
                 );
               })}
               {/* 横向网格线 */}
-              {[...Array(401)].map((_, i) => { // 401 * 50 = 20050
+              {[...Array(401)].map((_, i) => {
                 const y = i * 50 - 10000;
                 return (
                   <Line
@@ -580,7 +624,7 @@ const Whiteboard = ({ roomId }) => {
 
         {/* 第三层：用户绘制的元素 */}
         <Layer>
-          {(elements || []).map((el) => {
+          {elements.map((el) => {
             switch (el.tool) {
               case 'pencil':
               case 'eraser':
@@ -612,7 +656,9 @@ const Whiteboard = ({ roomId }) => {
                         strokeWidth={el.width}
                         lineCap="round"
                         dash={[]}
-                        globalCompositeOperation={el.tool === 'eraser' ? 'destination-out' : 'source-over'}
+                        globalCompositeOperation={
+                          el.tool === 'eraser' ? 'destination-out' : 'source-over'
+                        }
                       />
                     );
                   case 'dashed':
@@ -624,7 +670,9 @@ const Whiteboard = ({ roomId }) => {
                         strokeWidth={el.width}
                         lineCap="round"
                         dash={[10, 5]}
-                        globalCompositeOperation={el.tool === 'eraser' ? 'destination-out' : 'source-over'}
+                        globalCompositeOperation={
+                          el.tool === 'eraser' ? 'destination-out' : 'source-over'
+                        }
                       />
                     );
                   case 'arrow':
@@ -637,7 +685,9 @@ const Whiteboard = ({ roomId }) => {
                         pointerLength={10}
                         pointerWidth={10}
                         fill={el.color}
-                        globalCompositeOperation={el.tool === 'eraser' ? 'destination-out' : 'source-over'}
+                        globalCompositeOperation={
+                          el.tool === 'eraser' ? 'destination-out' : 'source-over'
+                        }
                       />
                     );
                   case 'bezier':
@@ -648,8 +698,10 @@ const Whiteboard = ({ roomId }) => {
                         stroke={el.color}
                         strokeWidth={el.width}
                         lineCap="round"
-                        fillEnabled={false} // 禁用填充，使内部透明
-                        globalCompositeOperation={el.tool === 'eraser' ? 'destination-out' : 'source-over'}
+                        fill="transparent" // 设置内部为透明
+                        globalCompositeOperation={
+                          el.tool === 'eraser' ? 'destination-out' : 'source-over'
+                        }
                       />
                     );
                   case 'arc':
@@ -660,8 +712,10 @@ const Whiteboard = ({ roomId }) => {
                         stroke={el.color}
                         strokeWidth={el.width}
                         lineCap="round"
-                        fillEnabled={false} // 禁用填充，使内部透明
-                        globalCompositeOperation={el.tool === 'eraser' ? 'destination-out' : 'source-over'}
+                        fill="transparent" // 设置内部为透明
+                        globalCompositeOperation={
+                          el.tool === 'eraser' ? 'destination-out' : 'source-over'
+                        }
                       />
                     );
                   default:
