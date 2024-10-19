@@ -1,6 +1,6 @@
 // src/components/Whiteboard.jsx
 import React, { useState, useRef, useEffect, useContext } from 'react';
-import { Stage, Layer, Line } from 'react-konva';
+import { Stage, Layer, Line, Rect } from 'react-konva';
 import { Box, Button, ButtonGroup, Slider, Typography, IconButton } from '@mui/material';
 import { SketchPicker } from 'react-color';
 import { SocketContext } from '../utils/SocketContext';
@@ -12,6 +12,7 @@ import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import FitScreenIcon from '@mui/icons-material/FitScreen';
 import MouseIcon from '@mui/icons-material/Mouse';
+import jsPDF from 'jspdf';
 
 const Whiteboard = ({ roomId }) => {
   const [lines, setLines] = useState([]);
@@ -31,7 +32,11 @@ const Whiteboard = ({ roomId }) => {
 
   // 父容器引用和尺寸状态
   const containerRef = useRef(null);
+  const stageRef = useRef(null); // Stage 引用
   const [dimensions, setDimensions] = useState({ width: window.innerWidth * 0.75, height: window.innerHeight - 150 });
+
+  // 控制网格显示的状态
+  const [showGrid, setShowGrid] = useState(false);
 
   useEffect(() => {
     const updateDimensions = () => {
@@ -59,17 +64,9 @@ const Whiteboard = ({ roomId }) => {
   useEffect(() => {
     if (!socket || !roomId) return;
 
-    // 请求加载白板
-    socket.emit('loadCanvas', { roomId });
-
     // 监听清空白板事件
     socket.on('clearCanvas', () => {
       setLines([]);
-    });
-
-    // 监听加载白板事件
-    socket.on('loadCanvas', (savedLines) => {
-      setLines(savedLines || []);
     });
 
     // 监听绘图事件
@@ -80,7 +77,6 @@ const Whiteboard = ({ roomId }) => {
     // 清理事件监听器
     return () => {
       socket.off('clearCanvas');
-      socket.off('loadCanvas');
       socket.off('drawLine');
     };
   }, [socket, roomId]);
@@ -160,17 +156,42 @@ const Whiteboard = ({ roomId }) => {
     socket.emit('clearCanvas', { roomId });
   };
 
-  const saveCanvas = () => {
-    // 向服务器发送保存白板请求，包含当前线条数据
-    socket.emit('saveCanvas', { roomId, lines });
-    // 可选：显示保存成功的提示
-    alert('白板内容已保存');
+  // 保存为 PNG 文件
+  const saveCanvasAsPNG = () => {
+    if (!stageRef.current) {
+      console.error('Stage 未正确引用');
+      alert('导出失败，Stage 引用不存在。');
+      return;
+    }
+
+    const dataURL = stageRef.current.toDataURL({ pixelRatio: 3 });
+    const link = document.createElement('a');
+    link.href = dataURL;
+    link.download = 'whiteboard.png';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
-  const loadCanvas = () => {
-    // 向服务器请求加载白板
-    socket.emit('loadCanvas', { roomId });
-    // 服务器会发送 'loadCanvas' 事件，包含保存的线条数据
+  // 保存为 PDF 文件
+  const saveCanvasAsPDF = () => {
+    if (!stageRef.current) {
+      console.error('Stage 未正确引用');
+      alert('导出失败，Stage 引用不存在。');
+      return;
+    }
+
+    const dataURL = stageRef.current.toDataURL({ pixelRatio: 3 });
+    const pdf = new jsPDF('landscape', 'px', [dimensions.width, dimensions.height]);
+
+    // 添加 PNG 图片到 PDF
+    pdf.addImage(dataURL, 'PNG', 0, 0, dimensions.width, dimensions.height);
+    pdf.save('whiteboard.pdf');
+  };
+
+  // 切换网格显示
+  const toggleGrid = () => {
+    setShowGrid((prev) => !prev);
   };
 
   const handleColorChange = (selectedColor) => {
@@ -193,6 +214,8 @@ const Whiteboard = ({ roomId }) => {
     const oldScale = stageScale;
 
     const pointer = e.target.getStage().getPointerPosition();
+
+    if (!pointer) return;
 
     const mousePointTo = {
       x: (pointer.x - stagePosition.x) / oldScale,
@@ -321,32 +344,22 @@ const Whiteboard = ({ roomId }) => {
 
         {/* 功能按钮 */}
         <Box sx={{ ml: 2, display: 'flex', alignItems: 'center', mb: 1 }}>
-          <Button
-            variant="outlined"
-            color="error"
-            sx={{ mr: 2 }}
-            onClick={clearCanvas}
-          >
+          <Button variant="outlined" color="error" sx={{ mr: 2 }} onClick={clearCanvas}>
             清空白板
           </Button>
-          <Button
-            variant="outlined"
-            color="info"
-            sx={{ mr: 2 }}
-            onClick={saveCanvas}
-          >
-            保存白板
+          <Button variant="outlined" color="info" sx={{ mr: 2 }} onClick={saveCanvasAsPNG}>
+            保存为 PNG
           </Button>
-          <Button
-            variant="outlined"
-            color="warning"
-            onClick={loadCanvas}
-          >
-            加载白板
+          <Button variant="outlined" color="info" onClick={saveCanvasAsPDF}>
+            保存为 PDF
+          </Button>
+          <Button variant="outlined" color="success" onClick={toggleGrid}>
+            {showGrid ? '隐藏网格' : '显示网格'}
           </Button>
         </Box>
       </Box>
       <Stage
+        ref={stageRef} // 传递 Stage 引用
         width={dimensions.width}
         height={dimensions.height}
         style={{ border: '1px solid #ccc', background: '#fff', zIndex: 1 }}
@@ -365,10 +378,53 @@ const Whiteboard = ({ roomId }) => {
         draggable={tool === 'pan'} // 仅当工具为“拖拽”时允许拖拽
         onDragEnd={handleDragEnd} // 拖拽结束事件
       >
+        {/* 第一层：背景 */}
         <Layer>
-          
+          <Rect
+            x={-10000}
+            y={-10000}
+            width={20000}
+            height={20000}
+            fill="#ffffff"
+          />
+        </Layer>
 
-          {/* 绘制所有线条 */}
+        {/* 第二层：网格 */}
+        <Layer>
+          {showGrid && (
+            <>
+              {/* 纵向网格线 */}
+              {[...Array(401)].map((_, i) => { // 401 * 50 = 20050
+                const x = i * 50 - 10000;
+                return (
+                  <Line
+                    key={`v-${i}`}
+                    points={[x, -10000, x, 10000]}
+                    stroke="#ddd"
+                    strokeWidth={1}
+                    dash={[4, 4]}
+                  />
+                );
+              })}
+              {/* 横向网格线 */}
+              {[...Array(401)].map((_, i) => { // 401 * 50 = 20050
+                const y = i * 50 - 10000;
+                return (
+                  <Line
+                    key={`h-${i}`}
+                    points={[ -10000, y, 10000, y]}
+                    stroke="#ddd"
+                    strokeWidth={1}
+                    dash={[4, 4]}
+                  />
+                );
+              })}
+            </>
+          )}
+        </Layer>
+
+        {/* 第三层：用户绘制的线条 */}
+        <Layer>
           {(lines || []).map((line) => (
             line.points.length >= 2 && (
               <Line
