@@ -1,11 +1,11 @@
-// Room.jsx 修改
+// src/pages/Room.jsx
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useSocket } from '../utils/SocketContext';
 import { useSelector, useDispatch } from 'react-redux';
 import { setCurrentRoom } from '../redux/roomSlice';
-import { setOnlineUsers } from '../redux/onlineUsersSlice'; // 新增
+import { setOnlineUsers } from '../redux/onlineUsersSlice';
 import { Box } from '@mui/material';
 import Whiteboard from '../components/Whiteboard';
 import Chat from '../components/Chat';
@@ -17,11 +17,12 @@ const Room = () => {
     const dispatch = useDispatch();
     const { rooms } = useSelector((state) => state.room);
     const { user } = useSelector((state) => state.user);
-    const onlineUsers = useSelector((state) => state.onlineUsers.users); // 从 Redux 获取
 
     const [messages, setMessages] = useState([]);
 
-    const hasJoined = useRef(false);
+    const onlineUsers = useSelector((state) => state.onlineUsers.users);
+
+    const hasJoined = useRef(false); // 防止多次加入
 
     useEffect(() => {
         const room = rooms.find((r) => r.roomId === roomId);
@@ -32,7 +33,7 @@ const Room = () => {
 
     useEffect(() => {
         if (socket && roomId && !hasJoined.current) {
-            // 加入房间，传递仅 roomId
+            // 加入房间，仅传递 roomId
             socket.emit('joinRoom', { roomId });
             hasJoined.current = true;
 
@@ -45,7 +46,7 @@ const Room = () => {
             // 监听在线用户更新
             const handleUpdateUsers = (users) => {
                 console.log('接收到在线用户列表:', users);
-                dispatch(setOnlineUsers(users));
+                dispatch(setOnlineUsers(users)); // 更新 Redux Store 中的在线用户
             };
             socket.on('updateUsers', handleUpdateUsers);
 
@@ -77,11 +78,26 @@ const Room = () => {
 
     return (
         <Box sx={{ display: 'flex', height: '100vh' }}>
+            {/* 白板部分 */}
             <Box sx={{ flex: 3, borderRight: '1px solid #ccc', position: 'relative' }}>
                 <Whiteboard roomId={roomId} />
             </Box>
-            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <Chat messages={messages} onSend={sendMessage} />
+
+            {/* 右侧区域：聊天和在线用户 */}
+            <Box
+                sx={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100%',
+                }}
+            >
+                {/* 聊天部分 */}
+                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    <Chat messages={messages} onSend={sendMessage} />
+                </Box>
+
+                {/* 在线用户部分 */}
                 <OnlineUsers users={onlineUsers} />
             </Box>
         </Box>
