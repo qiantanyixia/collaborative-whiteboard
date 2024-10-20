@@ -1,12 +1,12 @@
 // src/pages/Room.jsx
 
 import React, { useEffect, useState, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useSocket } from '../utils/SocketContext';
 import { useSelector, useDispatch } from 'react-redux';
 import { setCurrentRoom } from '../redux/roomSlice';
-import { setOnlineUsers } from '../redux/onlineUsersSlice';
-import { Box } from '@mui/material';
+import { setOnlineUsers, clearOnlineUsers } from '../redux/onlineUsersSlice'; 
+import { Box, Button } from '@mui/material'; 
 import Whiteboard from '../components/Whiteboard';
 import Chat from '../components/Chat';
 import OnlineUsers from '../components/OnlineUsers';
@@ -15,6 +15,7 @@ const Room = () => {
     const { roomId } = useParams();
     const socket = useSocket();
     const dispatch = useDispatch();
+    const navigate = useNavigate(); // 使用 navigate
     const { rooms } = useSelector((state) => state.room);
     const { user } = useSelector((state) => state.user);
 
@@ -62,11 +63,18 @@ const Room = () => {
 
             // 清理事件监听器
             return () => {
+                // 发出 leaveRoom 事件
                 socket.emit('leaveRoom', { roomId });
+
+                // 移除事件监听器
                 socket.off('chatMessage', handleChatMessage);
                 socket.off('updateUsers', handleUpdateUsers);
                 socket.off('drawElement');
                 socket.off('clearCanvas');
+
+                // 清理 Redux 状态
+                dispatch(clearOnlineUsers());
+
                 hasJoined.current = false;
             };
         }
@@ -74,6 +82,20 @@ const Room = () => {
 
     const sendMessage = (message) => {
         socket.emit('chatMessage', { roomId, message });
+    };
+
+    // 退出房间的处理函数
+    const handleLeaveRoom = () => {
+        if (socket) {
+            // 发出 leaveRoom 事件
+            socket.emit('leaveRoom', { roomId });
+
+            // 清理 Redux 状态
+            dispatch(clearOnlineUsers());
+
+            // 导航回房间列表
+            navigate('/rooms'); // 假设房间列表页面的路径是 /rooms
+        }
     };
 
     return (
@@ -92,6 +114,13 @@ const Room = () => {
                     height: '100%',
                 }}
             >
+                {/* 顶部添加“退出房间”按钮 */}
+                <Box sx={{ p: 2, borderBottom: '1px solid #ccc' }}>
+                    <Button variant="contained" color="secondary" onClick={handleLeaveRoom}>
+                        退出房间
+                    </Button>
+                </Box>
+
                 {/* 聊天部分 */}
                 <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                     <Chat messages={messages} onSend={sendMessage} />

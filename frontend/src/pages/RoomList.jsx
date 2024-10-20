@@ -17,30 +17,38 @@ const RoomList = () => {
         navigate(`/room/${roomId}`);
     };
 
+    // 返回上一页的处理函数
+    const handleGoBack = () => {
+        navigate(-1); // 返回上一页
+    };
+
     return (
         <Container maxWidth="md">
-            <Box sx={{ mt: 4 }}>
+            <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="h4" gutterBottom>
                     房间列表
                 </Typography>
-                {loading && <Typography>加载中...</Typography>}
-                {error && (
-                    <Typography color="error" variant="body2">
-                        {error}
-                    </Typography>
-                )}
-                <List>
-                    {rooms.map((room) => (
-                        <ListItem key={room.roomId} secondaryAction={
-                            <Button variant="contained" color="primary" onClick={() => handleJoin(room.roomId)}>
-                                加入
-                            </Button>
-                        }>
-                            <ListItemText primary={room.name} secondary={`房间ID: ${room.roomId}`} />
-                        </ListItem>
-                    ))}
-                </List>
+                <Button variant="outlined" onClick={handleGoBack}>
+                    返回
+                </Button>
             </Box>
+            {loading && <Typography>加载中...</Typography>}
+            {error && (
+                <Typography color="error" variant="body2">
+                    {error}
+                </Typography>
+            )}
+            <List>
+                {rooms.map((room) => (
+                    <ListItem key={room.roomId} secondaryAction={
+                        <Button variant="contained" color="primary" onClick={() => handleJoin(room.roomId)}>
+                            加入
+                        </Button>
+                    }>
+                        <ListItemText primary={room.name} secondary={`房间ID: ${room.roomId}`} />
+                    </ListItem>
+                ))}
+            </List>
         </Container>
     );
 };
