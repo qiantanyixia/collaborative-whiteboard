@@ -1,13 +1,15 @@
-// src/pages/Room.jsx
-import React, { useEffect, useState } from 'react';
+// Room.jsx 修改
+
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useSocket } from '../utils/SocketContext';
 import { useSelector, useDispatch } from 'react-redux';
 import { setCurrentRoom } from '../redux/roomSlice';
+import { setOnlineUsers } from '../redux/onlineUsersSlice'; // 新增
 import { Box } from '@mui/material';
 import Whiteboard from '../components/Whiteboard';
 import Chat from '../components/Chat';
-import OnlineUsers from '../components/OnlineUsers'; // 新增
+import OnlineUsers from '../components/OnlineUsers';
 
 const Room = () => {
     const { roomId } = useParams();
@@ -15,9 +17,11 @@ const Room = () => {
     const dispatch = useDispatch();
     const { rooms } = useSelector((state) => state.room);
     const { user } = useSelector((state) => state.user);
+    const onlineUsers = useSelector((state) => state.onlineUsers.users); // 从 Redux 获取
 
     const [messages, setMessages] = useState([]);
-    const [onlineUsers, setOnlineUsers] = useState([]);
+
+    const hasJoined = useRef(false);
 
     useEffect(() => {
         const room = rooms.find((r) => r.roomId === roomId);
@@ -27,43 +31,45 @@ const Room = () => {
     }, [roomId, rooms, dispatch]);
 
     useEffect(() => {
-        if (socket && user && roomId) {
-            // 加入房间
-            socket.emit('joinRoom', { roomId, user });
+        if (socket && roomId && !hasJoined.current) {
+            // 加入房间，传递仅 roomId
+            socket.emit('joinRoom', { roomId });
+            hasJoined.current = true;
 
             // 监听聊天室消息
-            socket.on('chatMessage', (message) => {
+            const handleChatMessage = (message) => {
                 setMessages((prevMessages) => [...prevMessages, message]);
-            });
+            };
+            socket.on('chatMessage', handleChatMessage);
 
             // 监听在线用户更新
-            socket.on('updateUsers', (users) => {
-                setOnlineUsers(users);
-            });
+            const handleUpdateUsers = (users) => {
+                console.log('接收到在线用户列表:', users);
+                dispatch(setOnlineUsers(users));
+            };
+            socket.on('updateUsers', handleUpdateUsers);
 
             // 监听绘图事件
-            socket.on('drawLine', (line) => {
-                // 通过事件传递给Whiteboard组件
-                // 这里白板组件已经订阅了'SocketContext'，所以可以在Whiteboard中处理
+            socket.on('drawElement', (element) => {
+                // Whiteboard 组件已经订阅 'drawElement' 事件，可以在 Whiteboard 中处理
             });
 
             // 监听清空白板事件
             socket.on('clearCanvas', () => {
-                // 通过事件传递给Whiteboard组件
-                // Whiteboard组件会处理'clearCanvas'事件
+                // Whiteboard 组件已经订阅 'clearCanvas' 事件，可以在 Whiteboard 中处理
             });
 
-            // 加载白板内容（由服务器自动发送，无需额外emit）
-
+            // 清理事件监听器
             return () => {
-                socket.emit('leaveRoom', { roomId, user });
-                socket.off('chatMessage');
-                socket.off('updateUsers');
-                socket.off('drawLine');
+                socket.emit('leaveRoom', { roomId });
+                socket.off('chatMessage', handleChatMessage);
+                socket.off('updateUsers', handleUpdateUsers);
+                socket.off('drawElement');
                 socket.off('clearCanvas');
+                hasJoined.current = false;
             };
         }
-    }, [socket, roomId, user, dispatch]);
+    }, [socket, roomId, dispatch]);
 
     const sendMessage = (message) => {
         socket.emit('chatMessage', { roomId, message });

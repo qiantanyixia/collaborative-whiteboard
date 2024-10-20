@@ -1,4 +1,5 @@
 // src/utils/SocketContext.jsx
+
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { io } from 'socket.io-client';
 import { useSelector } from 'react-redux';
@@ -20,7 +21,7 @@ export const SocketProvider = ({ children }) => {
 
         // 初始化 Socket 连接
         const newSocket = io(SERVER_URL, {
-            auth: { token },
+            auth: { token }, // 仅发送 token
             transports: ['websocket'], // 强制使用 WebSocket，避免长轮询
             reconnectionAttempts: 5, // 最大重连次数
             reconnectionDelay: 1000, // 重连延迟时间
