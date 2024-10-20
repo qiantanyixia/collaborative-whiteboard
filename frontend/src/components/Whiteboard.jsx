@@ -1,6 +1,6 @@
 // src/components/Whiteboard.jsx
 import React, { useState, useRef, useEffect, useContext } from 'react';
-import { Stage, Layer, Line, Arrow, Rect, Path } from 'react-konva';
+import { Stage, Layer, Line, Arrow, Rect, Path, Circle, Ellipse, RegularPolygon, Star } from 'react-konva';
 import {
   Box,
   Button,
@@ -21,6 +21,7 @@ import {
   setColor,
   setLineWidth,
   setLineType,
+  setShapeType,
 } from '../redux/whiteboardSlice';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
@@ -31,7 +32,17 @@ import DashedIcon from '@mui/icons-material/BorderStyle';
 import ArrowIcon from '@mui/icons-material/CallMissed';
 import BezierIcon from '@mui/icons-material/Functions'; // 替代 Curve
 import TimelineIcon from '@mui/icons-material/Timeline'; // 替代 ArcIcon
+import ShapeIcon from '@mui/icons-material/CropSquare'; // Shapes 工具图标
 import jsPDF from 'jspdf';
+
+// Shapes 的图标
+import SquareIcon from '@mui/icons-material/CropSquare';
+import RectangleIcon from '@mui/icons-material/Rectangle';
+import CircleIcon from '@mui/icons-material/Circle';
+import EllipseIcon from '@mui/icons-material/VignetteRounded';
+import TriangleIcon from '@mui/icons-material/Crop32Outlined';
+import StarIcon from '@mui/icons-material/Star';
+import PolygonIcon from '@mui/icons-material/Polyline';
 
 const Whiteboard = ({ roomId }) => {
   const [elements, setElements] = useState([]); // 支持不同类型的绘制元素
@@ -41,6 +52,7 @@ const Whiteboard = ({ roomId }) => {
   const color = useSelector((state) => state.whiteboard.color);
   const toolWidth = useSelector((state) => state.whiteboard.lineWidth);
   const lineType = useSelector((state) => state.whiteboard.lineType);
+  const shapeType = useSelector((state) => state.whiteboard.shapeType); // 选择当前形状类型
   const [showColorPicker, setShowColorPicker] = useState(false);
   const socket = useContext(SocketContext);
 
@@ -62,8 +74,11 @@ const Whiteboard = ({ roomId }) => {
   const [showGrid, setShowGrid] = useState(false);
 
   // 菜单状态
-  const [anchorEl, setAnchorEl] = useState(null);
-  const openMenu = Boolean(anchorEl);
+  const [toolAnchorEl, setToolAnchorEl] = useState(null);
+  const openToolMenu = Boolean(toolAnchorEl);
+
+  const [shapeAnchorEl, setShapeAnchorEl] = useState(null);
+  const openShapeMenu = Boolean(shapeAnchorEl);
 
   // 优化绘图性能：使用 useRef 记录当前绘制元素，避免频繁更新 state
   const currentElementRef = useRef(null);
@@ -108,8 +123,8 @@ const Whiteboard = ({ roomId }) => {
       setElements(canvasData);
     });
 
-    // 监听绘图事件
-    socket.on('drawLine', (newElement) => {
+    // 监听绘制元素事件
+    socket.on('drawElement', (newElement) => {
       setElements((prevElements) => [...prevElements, newElement]);
     });
 
@@ -117,7 +132,7 @@ const Whiteboard = ({ roomId }) => {
     return () => {
       socket.off('clearCanvas');
       socket.off('loadCanvas');
-      socket.off('drawLine');
+      socket.off('drawElement');
     };
   }, [socket, roomId, currentUser]);
 
@@ -135,33 +150,36 @@ const Whiteboard = ({ roomId }) => {
     const stage = e.target.getStage();
     const pos = getRelativePointerPosition(stage);
 
-    // 创建新绘制元素
     const id = uuidv4();
-    const newElement = {
+    let newElement = {
       id,
       tool,
-      lineType: tool === 'line' ? lineType : null, // 如果是选择线条工具，记录线条类型
       color: tool === 'eraser' ? '#ffffff' : color,
       width: tool === 'eraser' ? 10 : toolWidth,
-      points: [pos.x, pos.y],
       roomId,
       userId: currentUser.id,
     };
 
-    if (tool === 'line' || tool === 'arrow' || tool === 'bezier' || tool === 'arc') {
-      currentElementRef.current = newElement; // 使用 ref 记录当前绘制元素
-      setElements((prevElements) => [...prevElements, newElement]);
-      // **不在这里发送drawLine事件**
-    } else {
-      setElements((prevElements) => [...prevElements, newElement]);
-      // **不在这里发送drawLine事件**
+    if (tool === 'pencil' || tool === 'eraser') {
+      newElement.points = [pos.x, pos.y];
+    } else if (tool === 'line') {
+      newElement.points = [pos.x, pos.y, pos.x, pos.y];
+      newElement.lineType = lineType;
+    } else if (tool === 'shape') { // 处理形状工具
+      newElement.shapeType = shapeType;
+      newElement.startPos = pos;
+      newElement.endPos = pos;
     }
+
+    currentElementRef.current = newElement;
+    setElements((prevElements) => [...prevElements, newElement]);
+    // **不在这里发送drawElement事件**
   };
 
   // 使用节流函数控制发送频率
   const throttledEmitDraw = useRef(
     throttle((updatedElement) => {
-      socket.emit('drawLine', updatedElement);
+      socket.emit('drawElement', updatedElement);
     }, 50)
   ).current;
 
@@ -171,38 +189,14 @@ const Whiteboard = ({ roomId }) => {
     const pos = getRelativePointerPosition(stage);
 
     if (currentElementRef.current) {
-      // 更新当前绘制元素
       const updatedElement = { ...currentElementRef.current };
 
-      switch (updatedElement.tool) {
-        case 'line':
-        case 'arrow':
-          updatedElement.points = [
-            updatedElement.points[0],
-            updatedElement.points[1],
-            pos.x,
-            pos.y,
-          ];
-          break;
-        case 'bezier':
-          // 贝塞尔曲线需要控制点，这里简化为使用当前点
-          updatedElement.points = [
-            updatedElement.points[0],
-            updatedElement.points[1],
-            pos.x,
-            pos.y,
-          ];
-          break;
-        case 'arc':
-          updatedElement.points = [
-            updatedElement.points[0],
-            updatedElement.points[1],
-            pos.x,
-            pos.y,
-          ];
-          break;
-        default:
-          updatedElement.points = [...updatedElement.points, pos.x, pos.y];
+      if (tool === 'pencil' || tool === 'eraser') {
+        updatedElement.points = updatedElement.points.concat([pos.x, pos.y]);
+      } else if (tool === 'line') {
+        updatedElement.points = [updatedElement.points[0], updatedElement.points[1], pos.x, pos.y];
+      } else if (tool === 'shape') { // 更新形状的结束位置
+        updatedElement.endPos = pos;
       }
 
       currentElementRef.current = updatedElement;
@@ -210,30 +204,15 @@ const Whiteboard = ({ roomId }) => {
         prevElements.map((el) => (el.id === updatedElement.id ? updatedElement : el))
       );
 
-      // **不在这里发送drawLine事件**
-    } else {
-      // 其他工具如铅笔、橡皮擦的绘制
-      const lastElement = elements[elements.length - 1];
-      if (!lastElement) return;
-
-      // 添加新的点
-      lastElement.points = lastElement.points.concat([pos.x, pos.y]);
-      setElements((prevElements) => {
-        const updatedElements = [...prevElements];
-        updatedElements[updatedElements.length - 1] = lastElement;
-        return updatedElements;
-      });
-
-      // 使用节流发送
-      throttledEmitDraw(lastElement);
+      // **不在这里发送drawElement事件**
     }
   };
 
   const handleMouseUp = () => {
     isDrawing.current = false;
     if (currentElementRef.current) {
-      // 绘制完成后发送drawLine事件
-      socket.emit('drawLine', currentElementRef.current);
+      // 绘制完成后发送drawElement事件
+      socket.emit('drawElement', currentElementRef.current);
       currentElementRef.current = null;
     }
   };
@@ -307,10 +286,24 @@ const Whiteboard = ({ roomId }) => {
 
   const handleToolChange = (selectedTool) => {
     dispatch(setTool(selectedTool));
-    // 如果切换到线条工具，保留当前绘制元素
-    if (selectedTool !== 'line') {
-      currentElementRef.current = null;
+    if (selectedTool !== 'shape') {
+      dispatch(setShapeType('rectangle')); // 非形状工具时重置 shapeType
     }
+  };
+
+  // 处理形状工具菜单
+  const handleShapeToolClick = (event) => {
+    setShapeAnchorEl(event.currentTarget);
+  };
+
+  const handleShapeToolClose = () => {
+    setShapeAnchorEl(null);
+  };
+
+  const handleShapeSelect = (type) => {
+    dispatch(setShapeType(type));
+    dispatch(setTool('shape')); // 选择形状后设置工具为 'shape'
+    handleShapeToolClose();
   };
 
   // 处理缩放
@@ -376,13 +369,13 @@ const Whiteboard = ({ roomId }) => {
     setStagePosition({ x: 0, y: 0 });
   };
 
-  // 线条类型菜单的处理函数
+  // 处理线条类型菜单
   const handleLineTypeClick = (event) => {
-    setAnchorEl(event.currentTarget);
+    setToolAnchorEl(event.currentTarget);
   };
 
   const handleLineTypeClose = () => {
-    setAnchorEl(null);
+    setToolAnchorEl(null);
   };
 
   const handleLineTypeSelect = (type) => {
@@ -422,7 +415,40 @@ const Whiteboard = ({ roomId }) => {
             拖拽
           </Button>
           <Button onClick={() => handleToolChange('line')}>选择线条</Button>
+          <Button onClick={handleShapeToolClick} startIcon={<ShapeIcon />}>
+            形状
+          </Button>
         </ButtonGroup>
+
+        {/* 形状选择菜单 */}
+        <Menu
+          anchorEl={shapeAnchorEl}
+          open={openShapeMenu}
+          onClose={handleShapeToolClose}
+        >
+          <MenuItem onClick={() => handleShapeSelect('rectangle')}>
+            <RectangleIcon sx={{ mr: 1 }} /> 矩形
+          </MenuItem>
+          <MenuItem onClick={() => handleShapeSelect('square')}>
+            <SquareIcon sx={{ mr: 1 }} /> 正方形
+          </MenuItem>
+          <MenuItem onClick={() => handleShapeSelect('circle')}>
+            <CircleIcon sx={{ mr: 1 }} /> 圆形
+          </MenuItem>
+          <MenuItem onClick={() => handleShapeSelect('ellipse')}>
+            <EllipseIcon sx={{ mr: 1 }} /> 椭圆形
+          </MenuItem>
+          <MenuItem onClick={() => handleShapeSelect('triangle')}>
+            <TriangleIcon sx={{ mr: 1 }} /> 三角形
+          </MenuItem>
+          <MenuItem onClick={() => handleShapeSelect('star')}>
+            <StarIcon sx={{ mr: 1 }} /> 星形
+          </MenuItem>
+          <MenuItem onClick={() => handleShapeSelect('polygon')}>
+            <PolygonIcon sx={{ mr: 1 }} /> 多边形
+          </MenuItem>
+          {/* 根据需要添加更多形状 */}
+        </Menu>
 
         {/* 线条类型选择按钮，仅在选择线条工具时显示 */}
         {tool === 'line' && (
@@ -437,7 +463,7 @@ const Whiteboard = ({ roomId }) => {
                 lineType === 'dashed' ? <DashedIcon /> :
                 lineType === 'arrow' ? <ArrowIcon /> :
                 lineType === 'bezier' ? <BezierIcon /> :
-                lineType === 'arc' ? <TimelineIcon /> : // 使用 TimelineIcon 代替 ArcIcon
+                lineType === 'arc' ? <TimelineIcon /> :
                 null
               }
             >
@@ -455,7 +481,7 @@ const Whiteboard = ({ roomId }) => {
                   : ''
               }`}
             </Button>
-            <Menu anchorEl={anchorEl} open={openMenu} onClose={handleLineTypeClose}>
+            <Menu anchorEl={toolAnchorEl} open={openToolMenu} onClose={handleLineTypeClose}>
               <MenuItem onClick={() => handleLineTypeSelect('straight')}>
                 <StraightIcon sx={{ mr: 1 }} /> 直线
               </MenuItem>
@@ -475,8 +501,8 @@ const Whiteboard = ({ roomId }) => {
           </>
         )}
 
-        {/* 颜色选择器和线条粗细滑动条仅在绘图模式下显示 */}
-        {(tool !== 'pan' && tool !== 'line') && (
+        {/* 颜色选择器和线条粗细滑动条，仅在绘图模式下显示 */}
+        {(tool !== 'pan' && tool !== 'line' && tool !== 'shape') && (
           <>
             <Box sx={{ ml: 2, position: 'relative', mb: 1 }}>
               <Button
@@ -647,7 +673,6 @@ const Whiteboard = ({ roomId }) => {
                 if (!el.lineType) return null;
                 switch (el.lineType) {
                   case 'straight':
-                    // 使用单一的起点和终点绘制直线
                     return (
                       <Line
                         key={el.id}
@@ -698,7 +723,7 @@ const Whiteboard = ({ roomId }) => {
                         stroke={el.color}
                         strokeWidth={el.width}
                         lineCap="round"
-                        fill="transparent" // 设置内部为透明
+                        fill="transparent"
                         globalCompositeOperation={
                           el.tool === 'eraser' ? 'destination-out' : 'source-over'
                         }
@@ -712,7 +737,7 @@ const Whiteboard = ({ roomId }) => {
                         stroke={el.color}
                         strokeWidth={el.width}
                         lineCap="round"
-                        fill="transparent" // 设置内部为透明
+                        fill="transparent"
                         globalCompositeOperation={
                           el.tool === 'eraser' ? 'destination-out' : 'source-over'
                         }
@@ -721,6 +746,128 @@ const Whiteboard = ({ roomId }) => {
                   default:
                     return null;
                 }
+              case 'shape': {
+                // 使用花括号包裹 case 'shape' 的内容
+                const { startPos, endPos, shapeType, color: shapeColor, width } = el;
+                const widthDiff = endPos.x - startPos.x;
+                const heightDiff = endPos.y - startPos.y;
+                const x = Math.min(startPos.x, endPos.x);
+                const y = Math.min(startPos.y, endPos.y);
+                const widthAbs = Math.abs(widthDiff);
+                const heightAbs = Math.abs(heightDiff);
+
+                switch (shapeType) {
+                  case 'rectangle':
+                    return (
+                      <Rect
+                        key={el.id}
+                        x={x}
+                        y={y}
+                        width={widthAbs}
+                        height={heightAbs}
+                        stroke={shapeColor}
+                        strokeWidth={width}
+                        fill="transparent"
+                      />
+                    );
+                  case 'square': {
+                    const size = Math.min(widthAbs, heightAbs);
+                    return (
+                      <Rect
+                        key={el.id}
+                        x={x}
+                        y={y}
+                        width={size}
+                        height={size}
+                        stroke={shapeColor}
+                        strokeWidth={width}
+                        fill="transparent"
+                      />
+                    );
+                  }
+                  case 'circle': {
+                    const radius = Math.sqrt(widthAbs ** 2 + heightAbs ** 2) / 2;
+                    const centerX = startPos.x + widthDiff / 2;
+                    const centerY = startPos.y + heightDiff / 2;
+                    return (
+                      <Circle
+                        key={el.id}
+                        x={centerX}
+                        y={centerY}
+                        radius={radius}
+                        stroke={shapeColor}
+                        strokeWidth={width}
+                        fill="transparent"
+                      />
+                    );
+                  }
+                  case 'ellipse': {
+                    const radiusX = widthAbs / 2;
+                    const radiusY = heightAbs / 2;
+                    const centerX = startPos.x + widthDiff / 2;
+                    const centerY = startPos.y + heightDiff / 2;
+                    return (
+                      <Ellipse
+                        key={el.id}
+                        x={centerX}
+                        y={centerY}
+                        radiusX={radiusX}
+                        radiusY={radiusY}
+                        stroke={shapeColor}
+                        strokeWidth={width}
+                        fill="transparent"
+                      />
+                    );
+                  }
+                  case 'triangle': {
+                    return (
+                      <RegularPolygon
+                        key={el.id}
+                        x={(startPos.x + endPos.x) / 2}
+                        y={endPos.y}
+                        sides={3}
+                        radius={Math.max(widthAbs, heightAbs)}
+                        stroke={shapeColor}
+                        strokeWidth={width}
+                        fill="transparent"
+                      />
+                    );
+                  }
+                  case 'star': {
+                    return (
+                      <Star
+                        key={el.id}
+                        x={startPos.x + widthDiff / 2}
+                        y={startPos.y + heightDiff / 2}
+                        numPoints={5}
+                        innerRadius={widthAbs / 4}
+                        outerRadius={widthAbs / 2}
+                        fill="transparent"
+                        stroke={shapeColor}
+                        strokeWidth={width}
+                      />
+                    );
+                  }
+                  case 'polygon': {
+                    // 简单处理为五边形，您可以根据需要扩展
+                    return (
+                      <RegularPolygon
+                        key={el.id}
+                        x={(startPos.x + endPos.x) / 2}
+                        y={(startPos.y + endPos.y) / 2}
+                        sides={5} // 根据需要调整边数或动态获取
+                        radius={Math.max(widthAbs, heightAbs)}
+                        stroke={shapeColor}
+                        strokeWidth={width}
+                        fill="transparent"
+                      />
+                    );
+                  }
+                  // 根据需要添加更多形状
+                  default:
+                    return null;
+                }
+              }
               default:
                 return null;
             }

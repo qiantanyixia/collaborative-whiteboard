@@ -81,17 +81,17 @@ io.on('connection', (socket) => {
     });
 
     // 绘图事件
-    socket.on('drawLine', (data) => { // 确保 data 包含唯一的 id
+    socket.on('drawElement', (data) => { // 确保 data 包含唯一的 id
         const { roomId, id, ...lineData } = data;
         if (!roomId) {
-            console.error('drawLine 事件缺少 roomId');
+            console.error('drawElement 事件缺少 roomId');
             return;
         }
         if (!savedCanvases[roomId]) {
             savedCanvases[roomId] = [];
         }
         savedCanvases[roomId].push({ id, ...lineData });
-        socket.to(roomId).emit('drawLine', { id, ...lineData });
+        socket.to(roomId).emit('drawElement', { id, ...lineData });
     });
 
     // 聊天消息
