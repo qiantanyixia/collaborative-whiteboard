@@ -1,0 +1,93 @@
+html, body {
+    height: 100%;
+    margin: 0;
+    font-family: Arial, sans-serif;
+}
+
+body {
+    background-image: url(./图片/登录背景.jpeg);
+    background-repeat: no-repeat;
+    background-size: cover;
+    -webkit-background-size: cover;
+    -o-background-size: cover;
+    background-size: cover;
+}
+
+.logo {
+    text-align: center;
+    margin-top: 20px;
+}
+
+.logo-image {
+    max-width: 250px;
+    height: auto;
+    display: block; 
+    margin: 20px auto 10px;
+}
+
+.login-container {
+    max-width: 400px;
+    margin: 0 auto;
+    padding: 20px;
+    color: #fff;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    margin-top: 0;
+    -webkit-backdrop-filter: blur(2px) brightness(81%);
+    backdrop-filter: blur(2px) brightness(81%);
+    background-color: rgba(255, 255, 255, 0.46);
+    border-radius: 29px;
+}
+
+.login-title {
+    text-align: center;
+}
+
+.login-input {
+    width: 95%;
+    margin: 0px 0px 10px;
+    color: #000;
+    /* background-color: #fff; 设置背景颜色为白色 */
+    border: 1px solid #ccc; /* 确保边框样式与HTML文件一致 */
+    border-radius: 5px;
+    padding: 10px; /* 确保内边距与HTML文件一致 */
+}
+
+.button-container {
+    display: flex;
+    justify-content: space-between;
+}
+
+.forgot-password {
+    color: #fff;
+    cursor: pointer;
+    text-align: center;
+}
+
+.login-button {
+    background-color: #007BFF;
+    color: #fff;
+    width: 70%;
+}
+
+.social-login {
+    text-align: center;
+    margin-top: 20px;
+}
+
+.social-login a {
+    display: inline-block;
+    margin: 0 5px;
+    text-decoration: none;
+    color: #007BFF; /* 超链接蓝色 */
+}
+
+input[type="submit"] {
+    background-color: #007BFF;
+    color: #fff;
+    width: 30%;
+    height: 15%;
+    padding: 10px;
+    border: 1px solid #ccc; /* 确保边框样式与HTML文件一致 */
+    border-radius: 5px;
+}

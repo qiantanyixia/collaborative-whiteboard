@@ -24,7 +24,8 @@ const App = () => {
     return (
       <SocketProvider>
         <Router>
-            <Header />
+            {/* 仅在用户已登录时显示Header */}
+            {user && <Header />}
             <Routes>
                 <Route path="/register" element={<Register />} />
                 <Route path="/login" element={<Login />} />

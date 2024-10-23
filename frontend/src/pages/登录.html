@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>登陆</title>
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0; /* 确保没有默认的外边距 */
+        }
+        body {
+            background-image: url(./图片/登录背景.jpeg);
+            background-repeat: no-repeat;
+            background-size: cover;
+            font-family: Arial, sans-serif;
+            /*兼容浏览器版本*/
+            -webkit-background-size: cover;
+            -o-background-size: cover;                
+            background-size: cover;
+        }
+        
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #fff; /* 字体颜色为白色 */
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-top: 0;
+            backdrop-filter: blur(2px) brightness(81%);
+            background-color: rgba(255, 255, 255, 0.46);
+            border-radius: 29px;
+        }
+        
+        h1 {
+            text-align: center;
+        }
+        
+        input[type="text"],
+        input[type="password"] {
+            width: 95%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            color: #000; /* 输入框内字体颜色为黑色 */
+        }
+        
+        .button-container {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        input[type="submit"],
+        .forgot-password {
+            width: 28%; /* 调整宽度 */
+            padding: 10px;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        input[type="submit"] {
+            background-color: #007BFF; /* 蓝色背景 */
+        }
+        
+        .social-login {
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .social-login a {
+            display: inline-block;
+            margin: 0 5px;
+            text-decoration: none;
+            color: #007BFF; /* 超链接蓝色 */
+        }
+    </style>
+</head>
+<body>
+    <div class="logo">
+        <img src="./图片/logo1.png" alt="公司logo" style="max-width: 250px; height: auto; display: block; margin: 20px auto 10px;">
+    </div>
+    <div class="container">
+        <h1>登录</h1>
+        <form>
+            <input type="text" id="username" placeholder="用户名/邮箱">
+            <input type="password" id="password" placeholder="密码">
+            <div class="button-container">
+                <div class="forgot-password">忘记密码?</div>
+                <input type="submit" value="登录">
+            </div>
+        </form>
+        <div class="social-login">
+            还没有账号？ <a href="#">创建一个</a>
+        </div>
+    </div>
+    
+</body>
+</html>
