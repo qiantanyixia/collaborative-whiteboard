@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { registerUser } from '../redux/userSlice';
-import { TextField, Button, Typography, Container, Box } from '@mui/material';
+import { Typography, Container, Box } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import './Login.css'; // 使用相同的CSS文件
+import logoURL from './图片/logo1.png';
 
 const Register = () => {
     const dispatch = useDispatch();
@@ -16,6 +18,13 @@ const Register = () => {
     });
 
     const { username, password, confirmPassword } = formData;
+
+    useEffect(() => {
+        document.body.classList.add('login-page');
+        return () => {
+            document.body.classList.remove('login-page');
+        };
+    }, []);
 
     const onChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
@@ -32,52 +41,59 @@ const Register = () => {
     };
 
     return (
-        <Container maxWidth="sm">
-            <Box sx={{ mt: 8 }}>
-                <Typography variant="h4" gutterBottom>
-                    注册
-                </Typography>
-                <form onSubmit={onSubmit}>
-                    <TextField
-                        label="用户名"
-                        name="username"
-                        value={username}
-                        onChange={onChange}
-                        fullWidth
-                        margin="normal"
-                        required
-                    />
-                    <TextField
-                        label="密码"
-                        name="password"
-                        type="password"
-                        value={password}
-                        onChange={onChange}
-                        fullWidth
-                        margin="normal"
-                        required
-                    />
-                    <TextField
-                        label="确认密码"
-                        name="confirmPassword"
-                        type="password"
-                        value={confirmPassword}
-                        onChange={onChange}
-                        fullWidth
-                        margin="normal"
-                        required
-                    />
-                    {error && (
-                        <Typography color="error" variant="body2">
-                            {error}
-                        </Typography>
-                    )}
-                    <Button type="submit" variant="contained" color="primary" fullWidth disabled={loading}>
-                        {loading ? '注册中...' : '注册'}
-                    </Button>
-                </form>
-            </Box>
-        </Container>
+        <div className="page">
+            <div className="logo-container">
+                <img src={logoURL} alt="logo" className="logo-image" />
+            </div>
+            <Container maxWidth="xs" className="login-container">
+                <h1 className="login-title">注册</h1>
+                <Box sx={{ mt: 8 }}>
+                    <form onSubmit={onSubmit}>
+                        <input
+                            type="text"
+                            name="username"
+                            placeholder="用户名"
+                            value={username}
+                            onChange={onChange}
+                            className="login-input"
+                            required
+                        />
+                        <input
+                            type="password"
+                            name="password"
+                            placeholder="密码"
+                            value={password}
+                            onChange={onChange}
+                            className="login-input"
+                            required
+                        />
+                        <input
+                            type="password"
+                            name="confirmPassword"
+                            placeholder="确认密码"
+                            value={confirmPassword}
+                            onChange={onChange}
+                            className="login-input"
+                            required
+                        />
+                        {error && (
+                            <Typography color="error" variant="body2">
+                                {error}
+                            </Typography>
+                        )}
+                        <div className="button-container">
+                            <div className="social-login"><a href="/login">已有账号</a></div>
+                            <input
+                                type="submit"
+                                className="login-button"
+                                disabled={loading}
+                                value={loading ? '注册中...' : '注册'}
+                            />
+                        </div>
+                    </form>
+                </Box>
+            </Container>
+        </div>
     );
 };
 

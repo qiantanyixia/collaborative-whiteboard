@@ -42,9 +42,9 @@ const Login = () => {
     };
 
     return (
-        <div className="login-page">
+        <div className="page">
             <div className="logo-container">
-                <img src={logoURL} alt="公司logo" className="logo-image" />
+                <img src={logoURL} alt="logo" className="logo-image" />
             </div>
             <Container maxWidth="xs" className="login-container">
                 <h1 className="login-title">登录</h1>
