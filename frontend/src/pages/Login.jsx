@@ -19,6 +19,13 @@ const Login = () => {
     const { username, password } = formData;
 
     useEffect(() => {
+        document.body.classList.add('login-page');
+        return () => {
+            document.body.classList.remove('login-page');
+        };
+    }, []);
+
+    useEffect(() => {
         if (token && !user) {
             dispatch(fetchCurrentUser(token));
         }
@@ -42,9 +49,6 @@ const Login = () => {
             <Container maxWidth="xs" className="login-container">
                 <h1 className="login-title">登录</h1>
                 <Box sx={{ mt: 8 }}>
-                    {/* <Typography variant="h4" gutterBottom className="login-title">
-                        登录
-                    </Typography> */}
                     <form onSubmit={onSubmit}>
                         <input
                             type="text"
@@ -72,22 +76,15 @@ const Login = () => {
                         <div className="button-container">
                             <div className="forgot-password">忘记密码?</div>
                             <input
-                            type="submit"
-                            style={{
-                                // backgroundColor: '#007BFF',
-                                // color: '#fff',
-                                // width: '70%',
-                                ...loading && { cursor: 'not-allowed' }
-                            }}
-                            //className="login-button"
-                            disabled={loading}
-                            value={loading ? '登录中...' : '登录'}
-                        />
-
+                                type="submit"
+                                className="login-button"
+                                disabled={loading}
+                                value={loading ? '登录中...' : '登录'}
+                            />
                         </div>
                     </form>
                     <div className="social-login">
-                        还没有账号？ <a href="#">创建一个</a>
+                        还没有账号？ <a href="/register">创建一个</a>
                     </div>
                 </Box>
             </Container>

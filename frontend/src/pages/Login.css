@@ -4,7 +4,7 @@ html, body {
     font-family: Arial, sans-serif;
 }
 
-body {
+body.login-page {
     background-image: url(./图片/登录背景.jpeg);
     background-repeat: no-repeat;
     background-size: cover;
