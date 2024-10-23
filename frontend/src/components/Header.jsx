@@ -3,6 +3,7 @@ import { AppBar, Toolbar, Typography, Button } from '@mui/material';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { logout } from '../redux/userSlice';
+import logoURL from '../pages/图片/logo1.png'
 
 const Header = () => {
     const dispatch = useDispatch();
@@ -20,6 +21,7 @@ const Header = () => {
                 <Typography variant="h6" sx={{ flexGrow: 1 }}>
                     协作白板
                 </Typography>
+                {/* <img src={logoURL} alt="logo"/> */}
                 {user ? (
                     <>
                         <Typography variant="body1" sx={{ mr: 2 }}>
