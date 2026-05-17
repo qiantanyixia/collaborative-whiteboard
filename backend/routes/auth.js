@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const passport = require('passport');
 const User = require('../models/User');
 
-const secretOrKey = 'your_jwt_secret'; // 存储在环境变量中
+const secretOrKey = process.env.JWT_SECRET || 'your_jwt_secret'; // 从环境变量读取
 
 // 注册
 router.post('/register', async (req, res) => {

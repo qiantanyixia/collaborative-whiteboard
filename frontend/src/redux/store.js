@@ -5,7 +5,8 @@ import chatReducer from './chatSlice';
 import roomReducer from './roomSlice';
 import userReducer from './userSlice';
 import whiteboardReducer from './whiteboardSlice';
-import onlineUsersReducer from './onlineUsersSlice'; // 导入 onlineUsersReducer
+import onlineUsersReducer from './onlineUsersSlice';
+import aiReducer from './aiSlice';
 
 const store = configureStore({
     reducer: {
@@ -13,7 +14,8 @@ const store = configureStore({
         room: roomReducer,
         user: userReducer,
         whiteboard: whiteboardReducer,
-        onlineUsers: onlineUsersReducer, // 添加 onlineUsers 到 root reducer
+        onlineUsers: onlineUsersReducer,
+        ai: aiReducer,
     },
 });
 

@@ -1,10 +1,9 @@
 // src/components/OnlineUsers.jsx
-
 import React from 'react';
-import { Box, Typography, List, ListItem, ListItemText, Avatar } from '@mui/material';
+import { Box, Typography, List, ListItem, Avatar } from '@mui/material';
+import PersonIcon from '@mui/icons-material/Person';
 
 const OnlineUsers = ({ users }) => {
-    // 使用 Map 以 userId 为键，确保唯一性
     const uniqueUsersMap = new Map();
     users.forEach(user => {
         uniqueUsersMap.set(user.userId, user);
@@ -15,37 +14,54 @@ const OnlineUsers = ({ users }) => {
         <Box
             sx={{
                 p: 2,
-                borderTop: '1px solid #ccc',
-                maxHeight: '200px', // 调整最大高度
+                borderTop: '1px solid',
+                borderColor: 'divider',
+                maxHeight: '180px',
                 overflowY: 'auto',
-                backgroundColor: '#f9f9f9',
-                // 自定义滚动条样式（仅适用于 Webkit）
-                '&::-webkit-scrollbar': {
-                    width: '8px',
-                },
-                '&::-webkit-scrollbar-track': {
-                    background: '#f1f1f1',
-                    borderRadius: '4px',
-                },
-                '&::-webkit-scrollbar-thumb': {
-                    background: '#888',
-                    borderRadius: '4px',
-                },
-                '&::-webkit-scrollbar-thumb:hover': {
-                    background: '#555',
-                },
+                bgcolor: '#fafbfc',
             }}
         >
-            <Typography variant="h6" gutterBottom>
-                在线用户
-            </Typography>
-            <List>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                <Box
+                    sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        bgcolor: '#10b981',
+                    }}
+                />
+                <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                    在线用户 · {uniqueUsers.length}
+                </Typography>
+            </Box>
+
+            <List dense sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                 {uniqueUsers.map((user) => (
-                    <ListItem key={user.userId}>
-                        <Avatar sx={{ mr: 2 }}>
+                    <ListItem
+                        key={user.userId}
+                        sx={{
+                            py: 0.5,
+                            px: 1,
+                            borderRadius: 2,
+                            '&:hover': {
+                                bgcolor: 'rgba(0,0,0,0.02)',
+                            },
+                        }}
+                    >
+                        <Avatar
+                            sx={{
+                                width: 28,
+                                height: 28,
+                                mr: 1.5,
+                                fontSize: '0.85rem',
+                                bgcolor: 'primary.light',
+                            }}
+                        >
                             {user.username.charAt(0).toUpperCase()}
                         </Avatar>
-                        <ListItemText primary={user.username} />
+                        <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.9rem' }}>
+                            {user.username}
+                        </Typography>
                     </ListItem>
                 ))}
             </List>

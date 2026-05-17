@@ -84,6 +84,18 @@ const Room = () => {
         socket.emit('chatMessage', { roomId, message });
     };
 
+    // 处理 AI 返回的动作指令
+    const handleAIAction = (action) => {
+        console.log('🤖 AI 执行动作:', action);
+        switch (action) {
+            case 'clearCanvas':
+                socket.emit('clearCanvas', { roomId });
+                break;
+            default:
+                console.log('未识别的 AI 动作:', action);
+        }
+    };
+
     // 退出房间的处理函数
     const handleLeaveRoom = () => {
         if (socket) {
@@ -108,7 +120,9 @@ const Room = () => {
             {/* 右侧区域：聊天和在线用户 */}
             <Box
                 sx={{
-                    flex: 1,
+                    width: 380,
+                    minWidth: 380,
+                    maxWidth: 380,
                     display: 'flex',
                     flexDirection: 'column',
                     height: '100%',
@@ -122,8 +136,8 @@ const Room = () => {
                 </Box>
 
                 {/* 聊天部分 */}
-                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    <Chat messages={messages} onSend={sendMessage} />
+                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+                    <Chat messages={messages} onSend={sendMessage} onAIAction={handleAIAction} />
                 </Box>
 
                 {/* 在线用户部分 */}
